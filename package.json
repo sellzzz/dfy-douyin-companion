@@ -1,0 +1,14 @@
+{
+  "name": "dfy-douyin-companion",
+  "version": "0.1.0",
+  "description": "dfy-抖音陪看：把桌宠拖到抖音视频上，用本地视觉模型陪你看。",
+  "private": true,
+  "license": "MIT",
+  "engines": {"node": ">=22.12.0"},
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "check": "node --check app/main.cjs && node --check app/renderer.js && node --check app/native-window.cjs && node --check scripts/apply-close-button.mjs && node --check scripts/apply-drag-start.mjs"
+  },
+  "dependencies": {"koffi": "3.3.6"},
+  "repository": {"type": "git", "url": "https://github.com/sellzzz/dfy-douyin-companion.git"}
+}

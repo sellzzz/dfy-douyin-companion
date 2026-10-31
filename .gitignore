@@ -1,0 +1,16 @@
+node_modules/
+work/
+outputs/
+.local/
+.env
+.env.*
+!.env.example
+*.log
+*.lnk
+*.zip
+*.exe
+*.dmp
+__pycache__/
+.venv/
+.DS_Store
+Thumbs.db
