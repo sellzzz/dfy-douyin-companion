@@ -39,11 +39,13 @@ test('contextForPrompt truncates to maxInjectChars',()=>{
  try{
   for(let i=0;i<20;i++)memory.remember({kind:'moment',text:`瞬间片段编号${i}还有一些描述文字`,salience:0.5});
   memory.remember({kind:'preference',text:'喜欢旅行vlog',salience:0.9});
-  const ctx=memory.contextForPrompt({maxChars:120});
-  assert.ok(ctx.startsWith('【长期记忆】'));
-  assert.ok(ctx.length<=120);
+  const longOnly=memory.longTermContextForPrompt({maxChars:120});
+  assert.ok(longOnly.startsWith('【长期记忆】'));
+  assert.ok(longOnly.length<=120);
+  const ctx=memory.contextForPrompt({longTerm:{maxChars:120}});
+  assert.ok(ctx.includes('【长期记忆】'));
   memory.setEnabled(false);
-  assert.equal(memory.contextForPrompt(),'');
+  assert.equal(memory.longTermContextForPrompt(),'');
  }finally{rmSync(root,{recursive:true,force:true});}
 });
 
@@ -93,3 +95,43 @@ test('helpers clamp and similar',()=>{
  assert.equal(similar('喜欢猫猫','喜欢 猫猫'),true);
  assert.equal(similar('完全不同的一句话','另一件事情'),false);
 });
+
+test('short-term buffer injects, caps turns/chars, clears on endSession',async()=>{
+ const {root,memory}=fresh();
+ try{
+  memory.beginSession('st-1');
+  for(let i=0;i<12;i++){
+   const r=memory.observeShortTerm(`看到第${i}段很有趣的画面内容还想继续聊`,{enrich:false});
+   assert.equal(r.ok,true);
+  }
+  const st=memory.status();
+  assert.ok(st.shortTermTurns<=8);
+  assert.ok(st.shortTermTurns>=1);
+  const short=memory.shortTermContextForPrompt({maxChars:180});
+  assert.ok(short.startsWith('【短期记忆】'));
+  assert.ok(short.length<=180);
+  const combined=memory.contextForPrompt({longTerm:{maxChars:80},shortTerm:{maxChars:180}});
+  assert.ok(combined.includes('【短期记忆】'));
+  // long-term still independent
+  memory.remember({kind:'preference',text:'喜欢纪录片'});
+  assert.ok(memory.contextForPrompt().includes('【长期记忆】'));
+  await memory.endSession({useModel:false});
+  assert.equal(memory.shortTermContextForPrompt(),'');
+  assert.equal(memory.status().shortTermTurns,0);
+  // long-term session_summary may remain
+  assert.ok(memory.status().count>=1);
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
+
+test('short-term skips WAIT and respects disable',()=>{
+ const {root,memory}=fresh();
+ try{
+  memory.beginSession();
+  assert.equal(memory.observeShortTerm('WAIT_VIDEO',{enrich:false,result:{waiting:true,text:'WAIT_VIDEO'}}).ok,false);
+  assert.equal(memory.observeShortTerm('这灯光好温柔',{enrich:false}).ok,true);
+  memory.setShortTermEnabled(false);
+  assert.equal(memory.observeShortTerm('又看见一只猫',{enrich:false}).ok,false);
+  assert.equal(memory.shortTermContextForPrompt(),'');
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
+

@@ -13,7 +13,12 @@ const DEFAULT_CONFIG={
  maxEntities:80,
  extractTimeoutMs:4000,
  extractModel:null,
- ollamaHost:'http://127.0.0.1:11434'
+ ollamaHost:'http://127.0.0.1:11434',
+ shortTermEnabled:true,
+ shortTermMaxTurns:8,
+ shortTermMaxChars:520,
+ shortTermExtractModel:null,
+ shortTermExtractTimeoutMs:2500
 };
 
 function nowIso(){return new Date().toISOString();}
@@ -55,6 +60,11 @@ function createMemory(options={}){
  let sessionId=null;
  let sessionReplies=[];
  let extractBusy=false;
+ let shortBusy=false;
+ let shortBubbles=[]; // recent companion bubble lines
+ let shortNotes=[];   // brief scene/turn notes
+ let shortSummary=''; // one rolling session gist
+ let shortTurn=0;
 
  function ensureDir(){mkdirSync(dir,{recursive:true});}
 
@@ -205,7 +215,7 @@ function createMemory(options={}){
   return list.slice(0,limit);
  }
 
- function contextForPrompt(opts={}){
+ function longTermContextForPrompt(opts={}){
   loadStore();
   if(!config.enabled)return '';
   const maxChars=Math.max(40,Number(opts.maxChars||config.maxInjectChars||280));
@@ -215,7 +225,6 @@ function createMemory(options={}){
    const chunk=search('',{kinds:[kind],limit:kind==='moment'?6:4});
    for(const it of chunk)picked.push(it);
   }
-  // Prefer higher salience / newer overall, keep kind diversity already roughly ordered
   const seen=new Set();
   const lines=[];
   let used=0;
@@ -236,6 +245,107 @@ function createMemory(options={}){
   }
   if(!lines.length)return '';
   return header+lines.join('；');
+ }
+
+ function clearShortTerm(){
+  shortBubbles=[];
+  shortNotes=[];
+  shortSummary='';
+  shortTurn=0;
+ }
+
+ function trimShortTerm(){
+  const maxTurns=Math.max(2,Number(config.shortTermMaxTurns)||8);
+  if(shortBubbles.length>maxTurns)shortBubbles=shortBubbles.slice(-maxTurns);
+  if(shortNotes.length>maxTurns)shortNotes=shortNotes.slice(-maxTurns);
+ }
+
+ function refreshShortSummaryHeuristic(){
+  const bits=shortBubbles.slice(-4);
+  if(!bits.length){shortSummary='';return;}
+  shortSummary=clampText('本场刚看：'+bits.join(' → '),90);
+ }
+
+ function shortTermContextForPrompt(opts={}){
+  loadConfig();
+  if(config.shortTermEnabled===false)return '';
+  const maxChars=Math.max(60,Number(opts.maxChars||config.shortTermMaxChars||520));
+  const parts=[];
+  if(shortSummary)parts.push('概要：'+shortSummary);
+  const noteSlice=shortNotes.slice(-Math.max(2,Number(config.shortTermMaxTurns)||8));
+  const bubbleSlice=shortBubbles.slice(-Math.max(2,Number(config.shortTermMaxTurns)||8));
+  if(noteSlice.length)parts.push('近况：'+noteSlice.join(' / '));
+  if(bubbleSlice.length)parts.push('刚说：'+bubbleSlice.join(' / '));
+  if(!parts.length)return '';
+  const header='【短期记忆】';
+  let body=parts.join('；');
+  const budget=maxChars-header.length;
+  if(body.length>budget)body=clampText(body,budget);
+  return header+body;
+ }
+
+ function contextForPrompt(opts={}){
+  const shortPart=shortTermContextForPrompt(opts.shortTerm||{});
+  const longPart=longTermContextForPrompt(opts.longTerm||{maxChars:opts.maxChars});
+  return [shortPart,longPart].filter(Boolean).join('\n');
+ }
+
+ async function enrichShortTermAsync(replyText){
+  if(shortBusy)return null;
+  loadConfig();
+  const model=config.shortTermExtractModel||config.extractModel||options.extractModel||null;
+  if(!model)return null;
+  shortBusy=true;
+  try{
+   const host=config.ollamaHost||DEFAULT_CONFIG.ollamaHost;
+   const prompt=`你在帮桌宠维护陪看短期记忆。根据刚说的这句话，用JSON返回：{"note":"≤24字场景要点","summary":"≤36字滚动概要"}。不要编造。刚说：${clampText(replyText,100)}。已有概要：${clampText(shortSummary,80)}`;
+   const r=await fetch(`${host}/api/chat`,{
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    signal:AbortSignal.timeout(Number(config.shortTermExtractTimeoutMs)||2500),
+    body:JSON.stringify({
+     model,
+     stream:false,
+     keep_alive:'0',
+     options:{num_ctx:512,num_predict:80,temperature:0},
+     format:{type:'object',properties:{note:{type:'string'},summary:{type:'string'}},required:['note','summary']},
+     messages:[{role:'user',content:prompt}]
+    })
+   });
+   if(!r.ok)return null;
+   const j=await r.json();
+   let parsed=null;
+   try{parsed=JSON.parse((j.message?.content||'').trim());}catch{return null;}
+   if(parsed?.note){
+    const note=clampText(parsed.note,40);
+    if(shortNotes.length)shortNotes[shortNotes.length-1]=note;
+    else shortNotes.push(note);
+   }
+   if(parsed?.summary)shortSummary=clampText(parsed.summary,90);
+   trimShortTerm();
+   return parsed;
+  }catch{
+   return null;
+  }finally{
+   shortBusy=false;
+  }
+ }
+
+ function observeShortTerm(replyText,opts={}){
+  loadConfig();
+  if(config.shortTermEnabled===false)return {ok:false,reason:'disabled'};
+  if(shouldSkipReply({text:replyText,...(opts.result||{})}))return {ok:false,reason:'skip'};
+  const bubble=clampText(replyText,60);
+  if(!bubble)return {ok:false,reason:'empty'};
+  shortTurn+=1;
+  shortBubbles.push(bubble);
+  const note=clampText(opts.note||('画面：'+bubble),40);
+  shortNotes.push(note);
+  trimShortTerm();
+  refreshShortSummaryHeuristic();
+  // Optional LLM enrich is fire-and-forget so the NEXT infer tick sees updates without blocking VL.
+  if(opts.enrich!==false)enrichShortTermAsync(replyText).catch(()=>{});
+  return {ok:true,turn:shortTurn,bubbles:shortBubbles.length,notes:shortNotes.length};
  }
 
  function shouldSkipReply(result){
@@ -330,6 +440,7 @@ function createMemory(options={}){
  function beginSession(id){
   sessionId=id||randomUUID();
   sessionReplies=[];
+  clearShortTerm();
   return sessionId;
  }
 
@@ -371,7 +482,7 @@ function createMemory(options={}){
    if(config.enabled)remember({kind:'session_summary',text:summary,salience:0.7,sessionId:sid});
   }
   // Only clear if this session is still current (begin may have started a new one).
-  if(sessionId===sid){sessionId=null;sessionReplies=[];}
+  if(sessionId===sid){sessionId=null;sessionReplies=[];clearShortTerm();}
   return {ok:true,sessionId:sid,summary};
  }
 
@@ -379,6 +490,7 @@ function createMemory(options={}){
   ensureDir();
   items=[];
   sessionReplies=[];
+  clearShortTerm();
   writeFileSync(storePath,'');
   persistIndex();
   return {ok:true};
@@ -389,6 +501,14 @@ function createMemory(options={}){
   config.enabled=!!enabled;
   saveConfig();
   return {enabled:config.enabled};
+ }
+
+ function setShortTermEnabled(enabled){
+  loadConfig();
+  config.shortTermEnabled=!!enabled;
+  saveConfig();
+  if(!config.shortTermEnabled)clearShortTerm();
+  return {shortTermEnabled:config.shortTermEnabled};
  }
 
  function status(){
@@ -403,6 +523,10 @@ function createMemory(options={}){
    sessionId,
    maxInjectChars:config.maxInjectChars,
    retainDays:config.retainDays,
+   shortTermEnabled:config.shortTermEnabled!==false,
+   shortTermTurns:shortBubbles.length,
+   shortTermMaxChars:config.shortTermMaxChars,
+   shortTermPreview:shortTermContextForPrompt(),
    contextPreview:contextForPrompt()
   };
  }
@@ -416,6 +540,10 @@ function createMemory(options={}){
   remember,
   search,
   contextForPrompt,
+  longTermContextForPrompt,
+  shortTermContextForPrompt,
+  observeShortTerm,
+  clearShortTerm,
   shouldSkipReply,
   heuristicExtract,
   rememberFromReply,
@@ -424,6 +552,7 @@ function createMemory(options={}){
   endSession,
   clear,
   setEnabled,
+  setShortTermEnabled,
   status,
   normalizeKey,
   clampText,

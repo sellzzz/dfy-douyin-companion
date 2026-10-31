@@ -8,5 +8,6 @@ contextBridge.exposeInMainWorld('companion',{
  memoryStatus:()=>ipcRenderer.invoke('memory:status'),
  memoryClear:()=>ipcRenderer.invoke('memory:clear'),
  memorySetEnabled:enabled=>ipcRenderer.invoke('memory:setEnabled',enabled),
+ memorySetShortTermEnabled:enabled=>ipcRenderer.invoke('memory:setShortTermEnabled',enabled),
  onControl:fn=>ipcRenderer.on('control',(_event,action)=>fn(action))
 });

@@ -61,14 +61,20 @@ async function refreshMemoryUi(){
  try{
   const s=await window.companion.memoryStatus();
   $('memoryEnabled').checked=!!s.enabled;
-  const parts=[`共 ${s.count} 条`];
+  if($('shortTermEnabled'))$('shortTermEnabled').checked=s.shortTermEnabled!==false;
+  const parts=[`长期 ${s.count} 条`];
   if(s.byKind)parts.push(`偏好${s.byKind.preference||0}/实体${s.byKind.entity||0}/瞬间${s.byKind.moment||0}`);
+  if(s.shortTermEnabled!==false)parts.push(`短期 ${s.shortTermTurns||0} 轮`);
   $('memoryMeta').textContent=parts.join(' · ');
  }catch(e){$('memoryMeta').textContent='记忆不可用';}
 }
 $('memoryEnabled').onchange=async()=>{
  try{await window.companion.memorySetEnabled($('memoryEnabled').checked);await refreshMemoryUi();}
  catch(e){status('记忆开关失败：'+e.message);}
+};
+$('shortTermEnabled').onchange=async()=>{
+ try{await window.companion.memorySetShortTermEnabled($('shortTermEnabled').checked);await refreshMemoryUi();}
+ catch(e){status('短期记忆开关失败：'+e.message);}
 };
 $('memoryRefresh').onclick=()=>refreshMemoryUi().catch(e=>status(e.message));
 $('memoryClear').onclick=async()=>{
