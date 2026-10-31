@@ -5,5 +5,8 @@ contextBridge.exposeInMainWorld('companion',{
  locate:(image,anchor,aspect)=>ipcRenderer.invoke('locate',image,anchor,aspect),
  status:text=>ipcRenderer.invoke('status',text),
  hint:text=>ipcRenderer.invoke('hint',text),
+ memoryStatus:()=>ipcRenderer.invoke('memory:status'),
+ memoryClear:()=>ipcRenderer.invoke('memory:clear'),
+ memorySetEnabled:enabled=>ipcRenderer.invoke('memory:setEnabled',enabled),
  onControl:fn=>ipcRenderer.on('control',(_event,action)=>fn(action))
 });
