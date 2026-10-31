@@ -3,11 +3,13 @@ const {readFileSync,writeFileSync,mkdirSync,unlinkSync}=require('node:fs');
 const {randomBytes,timingSafeEqual}=require('node:crypto');
 const http=require('node:http');
 const native=require('./native-window.cjs');
-const {normalizedCrop,aroundDrop}=require('./geometry.cjs');
+const {normalizedCrop,aroundDrop,petSizeForRegion}=require('./geometry.cjs');
+const {RegionManager}=require('./region-manager.cjs');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 const model='qwen3-vl:2b-instruct-q4_K_M';
 let win,tray,server,chosen=null,running=false,generation=0,busy=false,controller;
+let region,preferredPetSize;
 const dragOnly=process.argv.includes('--drag-only');
 const token=randomBytes(32).toString('base64url');
 const runtimeFile=path.join(root,'work/dsh-home/doupet/controller.json');
@@ -26,18 +28,28 @@ async function pet(pathname,body){
  if(!r.ok)throw Error('桌宠连接失败');const j=await r.json();if(j.ok===false)throw Error('桌宠：'+j.reason);return j;
 }
 async function hint(text){const lease=await pet('/lock?pet=main&surface=desktop',{ttl:8000});try{await pet('/broadcast?pet=main&surface=desktop&lock='+lease.lockId,{text,duration:6000,anim:false});}finally{await pet('/lock/release?pet=main&surface=desktop',{lockId:lease.lockId});}}
+async function fitPet(rect){
+ const file=path.join(root,'work/dsh-home/dsh-pet/main-config.jsonc');
+ const config=JSON.parse(readFileSync(file,'utf8').replace(/^\uFEFF/,''));const item=config.pets.find(p=>p.id==='main');
+ if(!item)return;preferredPetSize??=item.size||462;const size=petSizeForRegion(rect,preferredPetSize);
+ if(item.size!==size){item.size=size;writeFileSync(file,JSON.stringify(config,null,2));await pet('/reload',{});}
+}
 app.whenReady().then(()=>{
+ region=new RegionManager({root,native,onConfirm:fitPet,onEnd:()=>{stop();command('stop');record('陪看范围已关闭');}});
  session.defaultSession.setDisplayMediaRequestHandler(async(req,callback)=>{
   const source=(await sources()).find(s=>s.id===chosen);
   if(!running||!source||req.frame!==win.webContents.mainFrame)return callback({});
   callback({video:source});
  });
- ipcMain.handle('sources',async e=>{verify(e);return (await sources()).filter(s=>/抖音/.test(s.name)&&/Chrome/.test(s.name)).map(s=>({id:s.id,name:s.name}));});
+ ipcMain.handle('sources',async e=>{verify(e);return (await sources()).filter(s=>/抖音/.test(s.name)&&/Chrome|Edge/.test(s.name)).map(s=>({id:s.id,name:s.name}));});
  ipcMain.handle('begin',async(e,id)=>{
-  verify(e);stop();const s=(await sources()).find(s=>s.id===id&&/抖音/.test(s.name)&&/Chrome/.test(s.name));
-  if(!s)throw Error('请在 Chrome 多开1打开抖音视频，再刷新列表');chosen=id;running=true;generation++;return s.name;
+  verify(e);stop();const s=(await sources()).find(s=>s.id===id&&/抖音/.test(s.name)&&/Chrome|Edge/.test(s.name));
+  if(!s)throw Error('请在 Chrome 多开1打开抖音视频，再刷新列表');chosen=id;running=true;generation++;region.setPaused(false);region.setStill(false);return s.name;
  });
- ipcMain.handle('stop',e=>{verify(e);stop();return true;});
+ ipcMain.handle('stop',e=>{verify(e);stop();region.setPaused(true);return true;});
+ ipcMain.handle('activity',(e,moving)=>{verify(e);region.setStill(!moving);return true;});
+ ipcMain.handle('end',e=>{verify(e);stop();region.clear();return true;});
+ ipcMain.handle('confirm-region',async(e,crop)=>{verify(e);record('请调整绿色边框，再确认陪看');return region.show(chosen,crop);});
  ipcMain.handle('status',(e,status)=>{verify(e);record(String(status).slice(0,120));});
  ipcMain.handle('hint',async(e,text)=>{verify(e);return hint(String(text).slice(0,100));});
  ipcMain.handle('locate',async(e,image,anchor,aspect)=>{
@@ -53,7 +65,7 @@ app.whenReady().then(()=>{
   if(!crop)throw Error('没找到视频画面，请把我拖到播放器中间再试');return crop;
  });
  ipcMain.handle('infer',async(e,image)=>{
-  verify(e);if(!running||busy)return {skipped:true};
+  verify(e);if(!running||busy||!region.permits(chosen))return {skipped:true};
   if(typeof image!=='string'||image.length>2000000||!/^[A-Za-z0-9+/=]+$/.test(image))throw Error('Invalid frame');
   const source=(await sources()).find(s=>s.id===chosen&&/抖音/.test(s.name));
   if(!source){stop();record('窗口已关闭或离开抖音');return {stopped:true,text:'所选窗口已关闭或离开抖音，陪看已停止'};}
@@ -83,7 +95,7 @@ app.whenReady().then(()=>{
  win.on('closed',()=>{stop();win=null;});win.loadFile('index.html',{query:{mode:dragOnly?'drag':'manual'}});
  tray=new Tray(nativeImage.createFromPath(path.join(root,'work/runtime/node_modules/dsh-pet/assets/logo.png')).resize({width:20,height:20}));
  tray.setContextMenu(Menu.buildFromTemplate([
-  {label:'拖桌宠到抖音视频上开始',enabled:false},
+  {label:'拖桌宠到抖音，确认范围后陪看',enabled:false},
   {label:'暂停 / 继续陪看',click:()=>command('toggle')},
   {label:'结束陪看',click:()=>command('stop')},
   {label:'打开备用控制面板',click:()=>{win.show();win.focus();}},
@@ -98,10 +110,10 @@ app.whenReady().then(()=>{
    let body='';for await(const chunk of req){body+=chunk;if(body.length>4096){res.writeHead(413);return res.end();}}
    const input=JSON.parse(body||'{}');
    if(req.url==='/drop'){
-    stop();
+    stop();region.clear('重新拖放');
     const skip=Number(win.getNativeWindowHandle().readBigUInt64LE());
     const target=native.dropTarget([skip,Number(input.skipHandle)]);
-    if(!target){command('stop');record('已停止，把我拖到抖音视频上就开始');hint('把我拖到正在播放的抖音画面上，就一起看啦。').catch(()=>{});}
+    if(!target){command('stop');record('已停止，拖到抖音并确认范围后开始');hint('把我拖到抖音画面上，确认绿色框后一起看。').catch(()=>{});}
     else{
      const source=(await sources()).find(s=>Number(s.id.split(':')[1])===target.hwnd);
      if(!source)throw Error('视频窗口暂时不可采集');
@@ -111,13 +123,13 @@ app.whenReady().then(()=>{
      win.webContents.executeJavaScript('window.doupetAttach('+JSON.stringify({id:source.id,anchor:target.anchor,name:source.name})+')',true).catch(e=>record('未能开始：'+e.message));
     }
    }else if(req.url==='/toggle'){command('toggle');}
-   else if(req.url==='/stop'){stop();command('stop');record('陪看已结束');}
+   else if(req.url==='/stop'){stop();region.clear();command('stop');record('陪看已结束');}
    else{res.writeHead(404);return res.end();}
    res.writeHead(200,{'content-type':'application/json'});res.end('{"ok":true}');
   }catch(e){record(e.message);res.writeHead(500);res.end('{"ok":false}');}
  });
- server.listen(3082,'127.0.0.1',()=>{writeFileSync(runtimeFile,JSON.stringify({pid:process.pid,token}));record('把我拖到抖音视频上，就开始陪看');});
+ server.listen(3082,'127.0.0.1',()=>{writeFileSync(runtimeFile,JSON.stringify({pid:process.pid,token}));record('拖到抖音视频，确认绿色框后开始陪看');});
  server.on('error',e=>{record('启动失败：'+e.message);app.quit();});
 });
-app.on('before-quit',()=>{stop();server?.close();try{const r=JSON.parse(readFileSync(runtimeFile,'utf8'));if(r.pid===process.pid)unlinkSync(runtimeFile);}catch{}});
+app.on('before-quit',()=>{stop();region?.dispose();server?.close();try{const r=JSON.parse(readFileSync(runtimeFile,'utf8'));if(r.pid===process.pid)unlinkSync(runtimeFile);}catch{}});
 app.on('window-all-closed',()=>app.quit());

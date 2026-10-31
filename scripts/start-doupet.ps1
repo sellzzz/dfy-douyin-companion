@@ -4,6 +4,7 @@ $env:DSH_HOME=Join-Path $taskRoot 'work/dsh-home'
 $nodePath=(Get-Command node.exe).Source
 & $nodePath (Join-Path $PSScriptRoot 'apply-close-button.mjs') | Out-Null
 & $nodePath (Join-Path $PSScriptRoot 'apply-drag-start.mjs') | Out-Null
+& $nodePath (Join-Path $PSScriptRoot 'apply-region-roaming.mjs') | Out-Null
 foreach($runtimePart in @('main.js','preload.js','sprite.js')){
  & $nodePath --check (Join-Path $taskRoot ('work/runtime/node_modules/dsh-pet/runtime/electron-helper/'+$runtimePart))
  if($LASTEXITCODE -ne 0){throw '桌宠文件检查未通过，未启动。'}
@@ -48,4 +49,4 @@ if(Test-Path $controllerFile){
 if(!$controllerReady){
  Start-Process (Join-Path $taskRoot 'work/dsh-home/electron/electron.exe') -ArgumentList @(('"'+$controllerEntry+'"'),'--drag-only') -WindowStyle Hidden -WorkingDirectory $taskRoot -RedirectStandardOutput (Join-Path $taskRoot 'work/window-companion.stdout.log') -RedirectStandardError (Join-Path $taskRoot 'work/window-companion.stderr.log')
 }
-Write-Host 'DouPet 已启动。把桌宠拖到正在播放的抖音画面上，松手即可陪看。'
+Write-Host 'DouPet 已启动。拖到抖音画面，调整绿色框并确认后开始陪看。'

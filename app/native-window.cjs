@@ -20,7 +20,7 @@ function dropTarget(skipHandles=[],atPoint=null){
  while(h&&steps++<1000){
   const id=Number(h),t=title(h);
   const cloak=Buffer.alloc(4);const isCloaked=attr(h,14,cloak,4)===0&&cloak.readUInt32LE()!==0;
-  if(!skip.has(id)&&visible(h)&&!iconic(h)&&!isCloaked&&!/dsh-pet 桌宠|DouPet 窗口陪看/.test(t)){
+  if(!skip.has(id)&&visible(h)&&!iconic(h)&&!isCloaked&&!/dsh-pet 桌宠|DouPet 窗口陪看|DFY 确认陪看范围/.test(t)){
    const r=bounds(h);
    if(r&&r.right>r.left&&r.bottom>r.top&&p.x>=r.left&&p.x<r.right&&p.y>=r.top&&p.y<r.bottom){
     // The first real window beneath the pet must be the target; never capture an obscured browser.

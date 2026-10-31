@@ -20,6 +20,7 @@ try{
  $env:DSH_HOME=Join-Path $repoRoot 'work/dsh-home'
  Run-Checked $nodeExe @((Join-Path $PSScriptRoot 'apply-close-button.mjs'))
  Run-Checked $nodeExe @((Join-Path $PSScriptRoot 'apply-drag-start.mjs'))
+ Run-Checked $nodeExe @((Join-Path $PSScriptRoot 'apply-region-roaming.mjs'))
  Run-Checked $nodeExe @((Join-Path $runtimeDir 'node_modules/dsh-pet/scripts/ensure-electron.mjs'))
  $configPath=Join-Path $env:DSH_HOME 'dsh-pet/main-config.jsonc'
  if(!(Test-Path $configPath)){

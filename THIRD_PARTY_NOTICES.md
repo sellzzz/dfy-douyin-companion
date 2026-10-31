@@ -8,7 +8,7 @@
 - 已验证 npm 版本：0.3.8
 - 开发时参考的源码快照：071af6a9ac59af0fe50a4931ae72fe4771d62dee
 - 上游代码版权：Copyright (c) 2026 PC2005-cloud，MIT；完整文本见 [third-party/dsh-pet-MIT.txt](third-party/dsh-pet-MIT.txt)。
-- `scripts/apply-close-button.mjs` 与 `scripts/apply-drag-start.mjs` 会对安装后的上游文件作局部修改。补丁包含与原有坐标、拖拽和进程生命周期接口衔接的适配，不能视为重新取得整个上游项目的版权。
+- `scripts/apply-close-button.mjs`、`scripts/apply-drag-start.mjs` 和 `scripts/apply-region-roaming.mjs` 会对安装后的上游文件作局部修改。补丁包含与原有坐标、拖拽、区域漫游和进程生命周期接口衔接的适配，不能视为重新取得整个上游项目的版权。
 - 上游资产没有复制进本仓库。其动画、提示词及源视频有独立的非商业约定；角色来源和 CC BY-NC-SA 4.0 说明请参阅上游 README。
 
 ## dsh_douyin_tools 与 DeepSeek Harness

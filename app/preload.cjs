@@ -2,6 +2,8 @@ const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('companion',{
  sources:()=>ipcRenderer.invoke('sources'),begin:id=>ipcRenderer.invoke('begin',id),
  stop:()=>ipcRenderer.invoke('stop'),infer:image=>ipcRenderer.invoke('infer',image),
+ end:()=>ipcRenderer.invoke('end'),confirmRegion:crop=>ipcRenderer.invoke('confirm-region',crop),
+ activity:moving=>ipcRenderer.invoke('activity',moving),
  locate:(image,anchor,aspect)=>ipcRenderer.invoke('locate',image,anchor,aspect),
  status:text=>ipcRenderer.invoke('status',text),
  hint:text=>ipcRenderer.invoke('hint',text),
