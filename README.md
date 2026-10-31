@@ -55,7 +55,8 @@ pwsh -NoProfile -File .\scripts\start-doupet.ps1
 
 ## 数据与权限
 
-- 视觉推理使用 `127.0.0.1:11434` 上的本机 Ollama；当前实现没有云端模型调用。
+- **视觉定位（locate）**默认始终走本机 Ollama VL（`qwen3-vl`）。
+- **气泡回复（infer）**可通过 `work/llm.json` 自选提供商（见仓库根目录 `llm.example.json`）：`ollama`（默认）或 `openai-compatible`（DeepSeek / OpenAI 等）。密钥只读环境变量名 `apiKeyEnv`，从不写入仓库。未配置时行为与今天一致（本机 Ollama VL）。
 - 不自动点赞、评论、发私信、发布视频或操作抖音账号；不读取 Cookie 或浏览器密码数据库。
 - 原始截图只在内存中处理，不写入磁盘；本机 `work/` 保存依赖、配置、运行日志和最近一次文字回应。
 - **长期记忆（v1）**只在本机 `work/memory/` 保存短文本（偏好 / 实体 / 瞬间 / 会话摘要），**从不保存截图或 base64 帧**。陪看时把压缩后的记忆片段注入本机模型的系统提示；备用面板可开关或一键清空。
@@ -65,6 +66,39 @@ pwsh -NoProfile -File .\scripts\start-doupet.ps1
 - 窗口标题检查和模型的登录界面识别并非完整隐私防护。输入账号、验证码或其他敏感内容前，请结束采集。
 
 `work/`、模型、浏览器数据、运行凭据、截图、个人配置、记忆数据和日志均不进入 Git。项目没有设置开机自启。
+
+## 回复模型自选（LLM）
+
+把 `llm.example.json` 复制为 `work/llm.json` 后按需修改。`work/` 已在 `.gitignore` 中。
+
+**继续用本机 Ollama（默认，可不建配置文件）：**
+
+```json
+{
+  "provider": "ollama",
+  "host": "http://127.0.0.1:11434",
+  "model": "qwen3-vl:2b-instruct-q4_K_M"
+}
+```
+
+**改用 DeepSeek（OpenAI 兼容接口）做气泡回复：**
+
+```json
+{
+  "provider": "openai-compatible",
+  "baseUrl": "https://api.deepseek.com/v1",
+  "model": "deepseek-chat",
+  "apiKeyEnv": "DEEPSEEK_API_KEY",
+  "supportsVision": false
+}
+```
+
+然后在启动前设置环境变量，例如 PowerShell：`$env:DEEPSEEK_API_KEY="sk-..."`。
+
+- `supportsVision: false`（文本模型常见）：先用本机 Ollama VL 生成一句画面摘要，再把摘要 + 记忆上下文发给云端文本模型。
+- `supportsVision: true`：直接把当前帧以多模态消息发给兼容接口（需该模型支持视觉）。
+- 也可把同一段配置写进 `work/memory/config.json` 的 `llm`（或 `reply`）字段；优先读 `work/llm.json`。
+- 记忆抽取（`memory.cjs` 的 extract）仍只用其自身的 `ollamaHost` / `extractModel`，不受回复提供商切换影响。
 
 ## 开发与验证
 

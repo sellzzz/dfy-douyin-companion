@@ -1,0 +1,12 @@
+{
+  "_comment": "Copy to work/llm.json (gitignored). Omit this file to keep today's default: local Ollama VL for reply + vision/locate.",
+  "provider": "ollama",
+  "host": "http://127.0.0.1:11434",
+  "model": "qwen3-vl:2b-instruct-q4_K_M",
+  "supportsVision": true,
+  "vision": {
+    "provider": "ollama",
+    "host": "http://127.0.0.1:11434",
+    "model": "qwen3-vl:2b-instruct-q4_K_M"
+  }
+}
