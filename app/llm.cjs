@@ -5,19 +5,21 @@ const {join}=require('node:path');
 const DEFAULT_VISION_MODEL='qwen3-vl:2b-instruct-q4_K_M';
 const DEFAULT_OLLAMA_HOST='http://127.0.0.1:11434';
 
-/** Sensible defaults: local Ollama VL for reply + vision (today's behavior). */
+/**
+ * Defaults = today's UX: local Ollama VL drafts the bubble; cloud refine is OFF.
+ * Flow: always local draft → if refine.enabled, rewrite with openai-compatible big model.
+ */
 const DEFAULT_LLM={
- provider:'ollama',
- host:DEFAULT_OLLAMA_HOST,
- model:DEFAULT_VISION_MODEL,
- // openai-compatible fields (unused unless provider changes):
- baseUrl:null,
- apiKeyEnv:null,
- supportsVision:true,
- vision:{
-  provider:'ollama',
+ local:{
   host:DEFAULT_OLLAMA_HOST,
   model:DEFAULT_VISION_MODEL
+ },
+ refine:{
+  enabled:false,
+  provider:'openai-compatible',
+  baseUrl:null,
+  model:null,
+  apiKeyEnv:null
  }
 };
 
@@ -26,9 +28,7 @@ function stripTrailingSlash(url){
 }
 
 /**
- * Load reply/vision LLM settings.
- * Prefer work/llm.json; else optional `llm` / `reply` block inside work/memory/config.json.
- * Missing file → DEFAULT_LLM (unchanged local Ollama VL behavior).
+ * Prefer work/llm.json; else optional `llm` / `reply` block in work/memory/config.json.
  */
 function loadLlmConfig(root,options={}){
  const llmPath=options.llmPath||join(root,'work','llm.json');
@@ -42,24 +42,27 @@ function loadLlmConfig(root,options={}){
    raw=mem.llm||mem.reply||null;
   }catch{raw=null;}
  }
- if(!raw||typeof raw!=='object')return {...DEFAULT_LLM,vision:{...DEFAULT_LLM.vision}};
- const provider=String(raw.provider||DEFAULT_LLM.provider).toLowerCase();
- const visionRaw=(raw.vision&&typeof raw.vision==='object')?raw.vision:{};
- const vision={
-  provider:String(visionRaw.provider||'ollama').toLowerCase(),
-  host:stripTrailingSlash(visionRaw.host||raw.host||DEFAULT_OLLAMA_HOST)||DEFAULT_OLLAMA_HOST,
-  model:visionRaw.model||raw.visionModel||DEFAULT_VISION_MODEL
+ const base={
+  local:{...DEFAULT_LLM.local},
+  refine:{...DEFAULT_LLM.refine}
  };
- const supportsVision=raw.supportsVision!=null?!!raw.supportsVision:(provider==='ollama');
- return {
-  provider:provider==='openai-compatible'||provider==='openai'?'openai-compatible':'ollama',
-  host:stripTrailingSlash(raw.host||DEFAULT_OLLAMA_HOST)||DEFAULT_OLLAMA_HOST,
-  model:raw.model||DEFAULT_VISION_MODEL,
-  baseUrl:raw.baseUrl?stripTrailingSlash(raw.baseUrl):null,
-  apiKeyEnv:raw.apiKeyEnv?String(raw.apiKeyEnv):null,
-  supportsVision,
-  vision
+ if(!raw||typeof raw!=='object')return base;
+
+ const localRaw=(raw.local&&typeof raw.local==='object')?raw.local:{};
+ // Back-compat: top-level host/model used to mean the local draft model.
+ base.local.host=stripTrailingSlash(localRaw.host||raw.host||DEFAULT_OLLAMA_HOST)||DEFAULT_OLLAMA_HOST;
+ base.local.model=localRaw.model||raw.localModel||DEFAULT_VISION_MODEL;
+
+ const refineRaw=(raw.refine&&typeof raw.refine==='object')?raw.refine:{};
+ const enabled=refineRaw.enabled!=null?!!refineRaw.enabled:!!raw.refineEnabled;
+ base.refine={
+  enabled,
+  provider:String(refineRaw.provider||'openai-compatible').toLowerCase(),
+  baseUrl:refineRaw.baseUrl?stripTrailingSlash(refineRaw.baseUrl):(raw.baseUrl?stripTrailingSlash(raw.baseUrl):null),
+  model:refineRaw.model||raw.refineModel||null,
+  apiKeyEnv:refineRaw.apiKeyEnv?String(refineRaw.apiKeyEnv):(raw.apiKeyEnv?String(raw.apiKeyEnv):null)
  };
+ return base;
 }
 
 async function ollamaChat({host,model,messages,signal,options}){
@@ -82,8 +85,9 @@ async function ollamaChat({host,model,messages,signal,options}){
 }
 
 async function openaiCompatibleChat({baseUrl,model,apiKey,messages,signal}){
- if(!baseUrl)throw Error('openai-compatible 需要配置 baseUrl');
- if(!apiKey)throw Error('openai-compatible 缺少 API Key（检查 apiKeyEnv 对应环境变量）');
+ if(!baseUrl)throw Error('refine 需要配置 refine.baseUrl');
+ if(!model)throw Error('refine 需要配置 refine.model');
+ if(!apiKey)throw Error('refine 缺少 API Key（检查 refine.apiKeyEnv 对应环境变量）');
  const url=stripTrailingSlash(baseUrl)+'/chat/completions';
  const r=await fetch(url,{
   method:'POST',
@@ -95,14 +99,14 @@ async function openaiCompatibleChat({baseUrl,model,apiKey,messages,signal}){
   body:JSON.stringify({
    model,
    stream:false,
-   temperature:0.3,
+   temperature:0.4,
    max_tokens:120,
    messages
   })
  });
  if(!r.ok){
   const body=await r.text().catch(()=>'');
-  throw Error('云端模型未就绪：HTTP '+r.status+(body?(' '+body.slice(0,160)):''));
+  throw Error('云端润色未就绪：HTTP '+r.status+(body?(' '+body.slice(0,160)):''));
  }
  const j=await r.json();
  const text=j.choices?.[0]?.message?.content;
@@ -110,77 +114,86 @@ async function openaiCompatibleChat({baseUrl,model,apiKey,messages,signal}){
 }
 
 /**
- * Short scene caption from local Ollama VL when the reply provider is text-only.
- */
-async function sceneSummaryFromVision({image,vision,signal}){
- const host=vision?.host||DEFAULT_OLLAMA_HOST;
- const model=vision?.model||DEFAULT_VISION_MODEL;
- const content=await ollamaChat({
-  host,
-  model,
-  signal,
-  options:{num_ctx:2048,num_predict:80,temperature:0},
-  messages:[
-   {role:'system',content:'你只描述当前视频画面里明确可见的内容，一句中文，40字以内。不猜身份、不编造剧情或声音。若是登录/验证/二维码页返回 WAIT_AUTH；没有清晰视频返回 WAIT_VIDEO。'},
-   {role:'user',content:'简述当前画面。',images:[image]}
-  ]
- });
- return content.slice(0,120);
-}
-
-/**
- * Bubble reply generation. Vision/locate stays on Ollama VL unless vision config says otherwise.
- * @param {{root:string,image:string,systemPrompt:string,userText?:string,signal:AbortSignal,config?:object}} args
+ * Always: local Ollama VL draft from frame + memory.
+ * Optional: if refine.enabled, push draft (+ memory context) to openai-compatible big model to rewrite bubble.
+ * WAIT_* / empty drafts are never sent to refine.
  */
 async function generateReply(args){
  const config=args.config||loadLlmConfig(args.root);
  const userText=args.userText||'一起看看当前视频画面，说一句简短感想。';
  const systemPrompt=args.systemPrompt;
+ const memoryContext=args.memoryContext||'';
  const image=args.image;
  const signal=args.signal;
+ const localHost=config.local?.host||DEFAULT_OLLAMA_HOST;
+ const localModel=config.local?.model||DEFAULT_VISION_MODEL;
 
- if(config.provider==='openai-compatible'){
-  const apiKeyEnv=config.apiKeyEnv||'OPENAI_API_KEY';
-  const apiKey=process.env[apiKeyEnv];
-  let messages;
-  if(config.supportsVision){
-   // OpenAI-style multimodal content parts
-   messages=[
-    {role:'system',content:systemPrompt},
-    {role:'user',content:[
-     {type:'text',text:userText},
-     {type:'image_url',image_url:{url:'data:image/jpeg;base64,'+image}}
-    ]}
-   ];
-  }else{
-   const scene=await sceneSummaryFromVision({image,vision:config.vision,signal});
-   if(!scene||/WAIT_AUTH|WAIT_VIDEO/.test(scene))return {text:scene||'WAIT_VIDEO',provider:config.provider,model:config.model,via:'vision-gate'};
-   messages=[
-    {role:'system',content:systemPrompt},
-    {role:'user',content:userText+'\n\n【画面摘要】'+scene}
-   ];
-  }
-  const text=await openaiCompatibleChat({
-   baseUrl:config.baseUrl,
-   model:config.model,
-   apiKey,
-   messages,
-   signal
-  });
-  return {text:text.slice(0,100),provider:config.provider,model:config.model};
- }
-
- // Default: local Ollama (VL can take images)
- const text=await ollamaChat({
-  host:config.host||DEFAULT_OLLAMA_HOST,
-  model:config.model||DEFAULT_VISION_MODEL,
+ const draft=(await ollamaChat({
+  host:localHost,
+  model:localModel,
   signal,
   messages:[
    {role:'system',content:systemPrompt},
    {role:'user',content:userText,images:[image]}
   ]
- });
- return {text:text.slice(0,100),provider:'ollama',model:config.model||DEFAULT_VISION_MODEL};
+ })).slice(0,100);
+
+ if(!draft||/WAIT_AUTH|WAIT_VIDEO|<think>/.test(draft)){
+  return {text:draft,draft,refined:false,provider:'ollama',model:localModel};
+ }
+
+ const refine=config.refine||{};
+ if(!refine.enabled){
+  return {text:draft,draft,refined:false,provider:'ollama',model:localModel};
+ }
+
+ const apiKeyEnv=refine.apiKeyEnv||'OPENAI_API_KEY';
+ const apiKey=process.env[apiKeyEnv];
+ const refineSystem=[
+  '你是陪看桌宠文案润色器。根据本地小模型的草稿和记忆上下文，改写成一句更自然、更贴画面的中文气泡（≤35字）。',
+  '只改写语气与表达，不新增未见内容、不猜人物身份、不编造剧情或声音。不要复述记忆清单。',
+  '若草稿本身是 WAIT_AUTH / WAIT_VIDEO，原样返回。只输出最终那一句，不要解释。'
+ ].join('');
+ const refineUser=[
+  memoryContext?('【记忆上下文】\n'+memoryContext+'\n'):'',
+  '【本地草稿】\n'+draft,
+  '\n请输出润色后的一句气泡。'
+ ].join('');
+
+ try{
+  const refined=await openaiCompatibleChat({
+   baseUrl:refine.baseUrl,
+   model:refine.model,
+   apiKey,
+   signal,
+   messages:[
+    {role:'system',content:refineSystem},
+    {role:'user',content:refineUser}
+   ]
+  });
+  const text=(refined||draft).trim().slice(0,100);
+  if(!text||/WAIT_AUTH|WAIT_VIDEO|<think>/.test(text)){
+   return {text:draft,draft,refined:false,provider:'ollama',model:localModel,refineSkipped:'wait-or-empty'};
+  }
+  return {
+   text,
+   draft,
+   refined:true,
+   provider:refine.provider||'openai-compatible',
+   model:refine.model,
+   localModel
+  };
+ }catch(err){
+  // Refine failure must not break陪看: fall back to local draft.
+  return {
+   text:draft,
+   draft,
+   refined:false,
+   provider:'ollama',
+   model:localModel,
+   refineError:String(err.message||err).slice(0,160)
+  };
+ }
 }
 
 module.exports={
@@ -189,7 +202,6 @@ module.exports={
  DEFAULT_OLLAMA_HOST,
  loadLlmConfig,
  generateReply,
- sceneSummaryFromVision,
  ollamaChat,
  openaiCompatibleChat
 };

@@ -55,8 +55,8 @@ pwsh -NoProfile -File .\scripts\start-doupet.ps1
 
 ## 数据与权限
 
-- **视觉定位（locate）**默认始终走本机 Ollama VL（`qwen3-vl`）。
-- **气泡回复（infer）**可通过 `work/llm.json` 自选提供商（见仓库根目录 `llm.example.json`）：`ollama`（默认）或 `openai-compatible`（DeepSeek / OpenAI 等）。密钥只读环境变量名 `apiKeyEnv`，从不写入仓库。未配置时行为与今天一致（本机 Ollama VL）。
+- **视觉定位（locate）**始终走本机 Ollama VL（`qwen3-vl`）。
+- **气泡回复（infer）**始终先由本机 Ollama VL 根据画面 + 记忆生成草稿；可选把草稿推送给云端大模型润色（见 `llm.example.json` / `work/llm.json` 的 `refine.enabled`，默认关闭）。密钥只通过环境变量名 `apiKeyEnv` 读取，从不写入仓库。未开启润色时行为与今天一致。
 - 不自动点赞、评论、发私信、发布视频或操作抖音账号；不读取 Cookie 或浏览器密码数据库。
 - 原始截图只在内存中处理，不写入磁盘；本机 `work/` 保存依赖、配置、运行日志和最近一次文字回应。
 - **长期记忆（v1）**只在本机 `work/memory/` 保存短文本（偏好 / 实体 / 瞬间 / 会话摘要），**从不保存截图或 base64 帧**。陪看时把压缩后的记忆片段注入本机模型的系统提示；备用面板可开关或一键清空。
@@ -67,38 +67,47 @@ pwsh -NoProfile -File .\scripts\start-doupet.ps1
 
 `work/`、模型、浏览器数据、运行凭据、截图、个人配置、记忆数据和日志均不进入 Git。项目没有设置开机自启。
 
-## 回复模型自选（LLM）
+## 回复模型：本地草稿 + 可选云端润色
 
-把 `llm.example.json` 复制为 `work/llm.json` 后按需修改。`work/` 已在 `.gitignore` 中。
+流程固定为：**本机 VL 先出草稿 →（可选）推给大模型改写气泡**。把 `llm.example.json` 复制为 `work/llm.json` 后按需修改（`work/` 已在 `.gitignore`）。
 
-**继续用本机 Ollama（默认，可不建配置文件）：**
-
-```json
-{
-  "provider": "ollama",
-  "host": "http://127.0.0.1:11434",
-  "model": "qwen3-vl:2b-instruct-q4_K_M"
-}
-```
-
-**改用 DeepSeek（OpenAI 兼容接口）做气泡回复：**
+**(A) 只用本地（默认，可不建配置 / `refine.enabled=false`）：**
 
 ```json
 {
-  "provider": "openai-compatible",
-  "baseUrl": "https://api.deepseek.com/v1",
-  "model": "deepseek-chat",
-  "apiKeyEnv": "DEEPSEEK_API_KEY",
-  "supportsVision": false
+  "local": {
+    "host": "http://127.0.0.1:11434",
+    "model": "qwen3-vl:2b-instruct-q4_K_M"
+  },
+  "refine": { "enabled": false }
 }
 ```
 
-然后在启动前设置环境变量，例如 PowerShell：`$env:DEEPSEEK_API_KEY="sk-..."`。
+**(B) 本地草稿 + DeepSeek 润色：**
 
-- `supportsVision: false`（文本模型常见）：先用本机 Ollama VL 生成一句画面摘要，再把摘要 + 记忆上下文发给云端文本模型。
-- `supportsVision: true`：直接把当前帧以多模态消息发给兼容接口（需该模型支持视觉）。
-- 也可把同一段配置写进 `work/memory/config.json` 的 `llm`（或 `reply`）字段；优先读 `work/llm.json`。
-- 记忆抽取（`memory.cjs` 的 extract）仍只用其自身的 `ollamaHost` / `extractModel`，不受回复提供商切换影响。
+```json
+{
+  "local": {
+    "host": "http://127.0.0.1:11434",
+    "model": "qwen3-vl:2b-instruct-q4_K_M"
+  },
+  "refine": {
+    "enabled": true,
+    "provider": "openai-compatible",
+    "baseUrl": "https://api.deepseek.com/v1",
+    "model": "deepseek-chat",
+    "apiKeyEnv": "DEEPSEEK_API_KEY"
+  }
+}
+```
+
+启动前设置环境变量，例如 PowerShell：`$env:DEEPSEEK_API_KEY="sk-..."`。
+
+- 润色请求只发送**本地草稿文本 + 记忆上下文**，不上传截图 / base64 帧。
+- `WAIT_AUTH` / `WAIT_VIDEO` 草稿不会推给云端；润色失败时回退本地草稿，不中断陪看。
+- 也可把同一段写进 `work/memory/config.json` 的 `llm`（或 `reply`）字段；优先读 `work/llm.json`。
+- 记忆抽取（`memory.cjs`）仍只用其自身的 `ollamaHost` / `extractModel`，与润色开关无关。
+
 
 ## 开发与验证
 

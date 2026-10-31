@@ -1,12 +1,14 @@
 {
-  "_comment": "Copy to work/llm.json (gitignored). Omit this file to keep today's default: local Ollama VL for reply + vision/locate.",
-  "provider": "ollama",
-  "host": "http://127.0.0.1:11434",
-  "model": "qwen3-vl:2b-instruct-q4_K_M",
-  "supportsVision": true,
-  "vision": {
-    "provider": "ollama",
+  "_comment": "Copy to work/llm.json (gitignored). Local Ollama VL ALWAYS drafts first. Set refine.enabled=true only if you want a cloud/big model to rewrite the draft.",
+  "local": {
     "host": "http://127.0.0.1:11434",
     "model": "qwen3-vl:2b-instruct-q4_K_M"
+  },
+  "refine": {
+    "enabled": false,
+    "provider": "openai-compatible",
+    "baseUrl": "https://api.deepseek.com/v1",
+    "model": "deepseek-chat",
+    "apiKeyEnv": "DEEPSEEK_API_KEY"
   }
 }
