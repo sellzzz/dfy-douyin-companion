@@ -56,3 +56,29 @@ status('正在看画面…');const result=await window.companion.infer(c.toDataU
 if(turn!==epoch||!active)return;if(result.stopped){await stop();status(result.text);}else if(result.waiting){status(result.text);}else if(!result.skipped){$('response').textContent=result.text;status(`陪看中 · 最近回应 ${result.latencySeconds.toFixed(2)} 秒`);}
 }catch(e){if(turn===epoch)status('暂时无法回应：'+e.message);}finally{busy=false;}},5000);
 window.addEventListener('resize',draw);refresh().then(()=>{if(new URLSearchParams(location.search).get('mode')==='drag')status('把我拖到抖音视频上，就开始陪看');}).catch(e=>status(e.message));
+
+async function refreshMemoryUi(){
+ try{
+  const s=await window.companion.memoryStatus();
+  $('memoryEnabled').checked=!!s.enabled;
+  if($('shortTermEnabled'))$('shortTermEnabled').checked=s.shortTermEnabled!==false;
+  const parts=[`长期 ${s.count} 条`];
+  if(s.byKind)parts.push(`偏好${s.byKind.preference||0}/实体${s.byKind.entity||0}/瞬间${s.byKind.moment||0}`);
+  if(s.shortTermEnabled!==false)parts.push(`短期 ${s.shortTermTurns||0} 轮`);
+  $('memoryMeta').textContent=parts.join(' · ');
+ }catch(e){$('memoryMeta').textContent='记忆不可用';}
+}
+$('memoryEnabled').onchange=async()=>{
+ try{await window.companion.memorySetEnabled($('memoryEnabled').checked);await refreshMemoryUi();}
+ catch(e){status('记忆开关失败：'+e.message);}
+};
+$('shortTermEnabled').onchange=async()=>{
+ try{await window.companion.memorySetShortTermEnabled($('shortTermEnabled').checked);await refreshMemoryUi();}
+ catch(e){status('短期记忆开关失败：'+e.message);}
+};
+$('memoryRefresh').onclick=()=>refreshMemoryUi().catch(e=>status(e.message));
+$('memoryClear').onclick=async()=>{
+ try{if(!confirm('清空本机长期记忆？此操作不可恢复。'))return;await window.companion.memoryClear();await refreshMemoryUi();status('已清空长期记忆');}
+ catch(e){status('清空失败：'+e.message);}
+};
+refreshMemoryUi().catch(()=>{});

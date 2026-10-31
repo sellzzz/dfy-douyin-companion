@@ -4,7 +4,7 @@
 
 Windows 上的本地 AI 桌宠原型。复用 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 的桌宠、动画和气泡能力，用 Electron 采集选定窗口，再交给本机 Ollama 视觉模型生成简短回应。
 
-> 早期原型，已在一台 Windows 11 / RTX 5070 电脑上跑通真实拖放、画面理解和气泡更新。尚无语音理解、长期记忆或连续视频推理。模型可能误认画面和人物，回应不代表视频事实。
+> 早期原型，已在一台 Windows 11 / RTX 5070 电脑上跑通真实拖放、画面理解和气泡更新。尚无语音理解或连续视频推理；已有本机文本长期记忆（v1，不存截图）。模型可能误认画面和人物，回应不代表视频事实。
 
 ## 怎么用
 
@@ -55,14 +55,59 @@ pwsh -NoProfile -File .\scripts\start-doupet.ps1
 
 ## 数据与权限
 
-- 视觉推理使用 `127.0.0.1:11434` 上的本机 Ollama；当前实现没有云端模型调用。
+- **视觉定位（locate）**始终走本机 Ollama VL（`qwen3-vl`）。
+- **气泡回复（infer）**始终先由本机 Ollama VL 根据画面 + 记忆生成草稿；可选把草稿推送给云端大模型润色（见 `llm.example.json` / `work/llm.json` 的 `refine.enabled`，默认关闭）。密钥只通过环境变量名 `apiKeyEnv` 读取，从不写入仓库。未开启润色时行为与今天一致。
 - 不自动点赞、评论、发私信、发布视频或操作抖音账号；不读取 Cookie 或浏览器密码数据库。
 - 原始截图只在内存中处理，不写入磁盘；本机 `work/` 保存依赖、配置、运行日志和最近一次文字回应。
+- **长期记忆（v1）**只在本机 `work/memory/` 保存短文本（偏好 / 实体 / 瞬间 / 会话摘要），**从不保存截图或 base64 帧**。陪看时把压缩后的记忆片段注入本机模型的系统提示；备用面板可开关或一键清空。
+- **短期记忆**只存在于当前陪看会话内存中（近几轮气泡 / 场景要点 / 一条滚动概要），以 `【短期记忆】` 注入下一轮系统提示，结束陪看即清空，不落盘、不整段升格为长期记忆。
 - 暂停会停止模型分析，但备用面板中的本地预览仍可继续；“结束采集”停止视频流。
 - 本机桌宠服务使用端口 3081，拖放控制通道使用 3082，均限回环地址；3082 的随机进程凭据只保存在本机运行目录。
 - 窗口标题检查和模型的登录界面识别并非完整隐私防护。输入账号、验证码或其他敏感内容前，请结束采集。
 
-`work/`、模型、浏览器数据、运行凭据、截图、个人配置和日志均不进入 Git。项目没有设置开机自启。
+`work/`、模型、浏览器数据、运行凭据、截图、个人配置、记忆数据和日志均不进入 Git。项目没有设置开机自启。
+
+## 回复模型：本地草稿 + 可选云端润色
+
+流程固定为：**本机 VL 先出草稿 →（可选）推给大模型改写气泡**。把 `llm.example.json` 复制为 `work/llm.json` 后按需修改（`work/` 已在 `.gitignore`）。
+
+**(A) 只用本地（默认，可不建配置 / `refine.enabled=false`）：**
+
+```json
+{
+  "local": {
+    "host": "http://127.0.0.1:11434",
+    "model": "qwen3-vl:2b-instruct-q4_K_M"
+  },
+  "refine": { "enabled": false }
+}
+```
+
+**(B) 本地草稿 + DeepSeek 润色：**
+
+```json
+{
+  "local": {
+    "host": "http://127.0.0.1:11434",
+    "model": "qwen3-vl:2b-instruct-q4_K_M"
+  },
+  "refine": {
+    "enabled": true,
+    "provider": "openai-compatible",
+    "baseUrl": "https://api.deepseek.com/v1",
+    "model": "deepseek-chat",
+    "apiKeyEnv": "DEEPSEEK_API_KEY"
+  }
+}
+```
+
+启动前设置环境变量，例如 PowerShell：`$env:DEEPSEEK_API_KEY="sk-..."`。
+
+- 润色请求只发送**本地草稿文本 + 记忆上下文**，不上传截图 / base64 帧。
+- `WAIT_AUTH` / `WAIT_VIDEO` 草稿不会推给云端；润色失败时回退本地草稿，不中断陪看。
+- 也可把同一段写进 `work/memory/config.json` 的 `llm`（或 `reply`）字段；优先读 `work/llm.json`。
+- 记忆抽取（`memory.cjs`）仍只用其自身的 `ollamaHost` / `extractModel`，与润色开关无关。
+
 
 ## 开发与验证
 
