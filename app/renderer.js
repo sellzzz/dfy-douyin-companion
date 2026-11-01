@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id),video=$('video'),overlay=$('crop');
 let stream,active=false,confirmed=false,epoch=0,crop=null,drag=null,busy=false,attachmentId=0,lastPixels=null,lastMotion=0;
 function status(s){$('status').textContent=s;window.companion.status(s).catch(()=>{});}
-async function refresh(){const list=await window.companion.sources();$('windows').replaceChildren(...list.map(s=>Object.assign(document.createElement('option'),{value:s.id,textContent:s.name})));status(list.length?'请选择 Chrome多开1 的抖音窗口。':'没有发现抖音窗口，请先在 Chrome多开1 打开抖音，再刷新。');}
+async function refresh(){const list=await window.companion.sources();$('windows').replaceChildren(...list.map(s=>Object.assign(document.createElement('option'),{value:s.id,textContent:s.name})));status(list.length?'请选择抖音客户端或浏览器中的抖音窗口。':'没有发现抖音窗口，请打开抖音 Windows 客户端或浏览器中的抖音，再刷新。');}
 function draw(){overlay.width=overlay.clientWidth;overlay.height=overlay.clientHeight;const c=overlay.getContext('2d');c.clearRect(0,0,overlay.width,overlay.height);const p=crop&&window.DfyGeometry.videoToPreviewCrop(crop,{width:overlay.width,height:overlay.height},{width:video.videoWidth,height:video.videoHeight});if(p){c.strokeStyle='#37dcb2';c.lineWidth=3;c.strokeRect(p.x*overlay.width,p.y*overlay.height,p.w*overlay.width,p.h*overlay.height);}}
 function point(e){const r=overlay.getBoundingClientRect();return {x:Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y:Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))};}
 overlay.onpointerdown=e=>{if(!stream||active)return;drag=point(e);overlay.setPointerCapture(e.pointerId);};

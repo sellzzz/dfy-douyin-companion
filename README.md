@@ -9,7 +9,7 @@ Windows 上的本地 AI 桌宠原型。复用 [PC2005-cloud/dsh-pet](https://git
 ## 怎么用
 
 1. 双击桌面 **dfy-抖音陪看**，桌宠出现，控制面板默认隐藏。
-2. 在 Chrome 或 Edge 打开抖音、播放视频。
+2. 打开抖音 Windows 客户端，或在 Chrome/Edge 打开抖音、播放视频。
 3. 把桌宠拖到视频画面中间，松手后出现绿色选框。
 4. 拖动框体移动范围，拖动边角调整大小；也可点“重新画框”。只框住希望宠物看的视频内容，再点 **确认陪看**。
 5. 确认后绿色框自动隐藏。宠物沿用原桌宠的待机、小动作、转身和走路动画，在选定范围内活动；取景范围不随宠物移动。
@@ -20,11 +20,11 @@ Windows 上的本地 AI 桌宠原型。复用 [PC2005-cloud/dsh-pet](https://git
 - 头上的 **×**：通知陪看停止，然后关闭桌宠。
 - 系统托盘：暂停、结束陪看、备用控制面板、退出。
 
-普通 Chrome 独立配置也可以使用，无需复制 Cookie、安装浏览器扩展或开启浏览器调试端口。当前按可见窗口标题识别 Chrome/Edge 中的抖音；手机、抖音原生客户端和其他平台尚未适配。
+支持抖音 Windows 客户端和 Chrome/Edge 中的抖音，普通 Chrome 独立配置也可以使用，无需复制 Cookie、安装浏览器扩展或开启浏览器调试端口。客户端按所属 `douyin.exe` 进程识别，即使窗口标题显示为 `douyin` 或视频标题也能选择；浏览器仍须为 Chrome/Edge 且标题包含“抖音”。手机和其他平台尚未适配。
 
 ## 安装
 
-需要 **Windows 10/11 x64、Node.js ≥22.12、PowerShell 7、Chrome/Edge、Ollama**。建议使用 Node.js 24。先从官方安装 [Node.js](https://nodejs.org/)、[PowerShell](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows) 和 [Ollama](https://ollama.com/download/windows)，安装后重新打开终端。
+需要 **Windows 10/11 x64、Node.js ≥22.12、PowerShell 7、抖音客户端或 Chrome/Edge、Ollama**。建议使用 Node.js 24。先从官方安装 [Node.js](https://nodejs.org/)、[PowerShell](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows) 和 [Ollama](https://ollama.com/download/windows)，安装后重新打开终端。
 
 ```powershell
 git clone https://github.com/sellzzz/dfy-douyin-companion.git
@@ -46,7 +46,7 @@ pwsh -NoProfile -File .\scripts\start-doupet.ps1
 
 ```text
 拖动桌宠并松手
-  → 判断鼠标下最上层的窗口是否是抖音浏览器窗口
+  → 判断鼠标下最上层的窗口是否是抖音客户端或抖音浏览器窗口
   → 仅采集这个窗口
   → 本地模型识别视频区域；失败时围绕拖放点取景
   → 显示可调整的绿色框，等待本人确认
@@ -69,7 +69,7 @@ pwsh -NoProfile -File .\scripts\start-doupet.ps1
 - 原始截图只在内存中处理，不写入磁盘；本机 `work/` 保存依赖、配置、运行日志和最近一次文字回应。
 - 暂停会停止模型分析，但备用面板中的本地预览仍可继续；“结束采集”停止视频流。
 - 本机桌宠服务使用端口 3081，拖放控制通道使用 3082，均限回环地址；3082 的随机进程凭据只保存在本机运行目录。
-- 窗口标题检查和模型的登录界面识别并非完整隐私防护。输入账号、验证码或其他敏感内容前，请结束采集。
+- 窗口所属程序、浏览器标题检查和模型的登录界面识别并非完整隐私防护。输入账号、验证码或其他敏感内容前，请结束采集。
 
 `work/`、模型、浏览器数据、运行凭据、截图、个人配置和日志均不进入 Git。项目没有设置开机自启。
 

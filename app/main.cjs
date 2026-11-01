@@ -3,6 +3,7 @@ const {readFileSync,writeFileSync,mkdirSync,unlinkSync}=require('node:fs');
 const {randomBytes,timingSafeEqual}=require('node:crypto');
 const http=require('node:http');
 const native=require('./native-window.cjs');
+const {isDouyinWindow,targetKind}=require('./window-policy.cjs');
 const {normalizedCrop,aroundDrop,petSizeForRegion}=require('./geometry.cjs');
 const {RegionManager}=require('./region-manager.cjs');
 const path=require('node:path');
@@ -19,6 +20,7 @@ app.setName('dfy-抖音陪看');
 if(!app.requestSingleInstanceLock())app.exit(0);
 app.on('second-instance',()=>{if(!dragOnly){win?.show();win?.focus();}});
 async function sources(){return desktopCapturer.getSources({types:['window'],thumbnailSize:{width:0,height:0},fetchWindowIcons:false});}
+function eligibleSource(source){return isDouyinWindow(native.details(Number(source.id.split(':')[1])));}
 function stop(){running=false;generation++;controller?.abort();}
 function command(action){win?.webContents.send('control',action);}
 function verify(e){if(e.sender!==win.webContents)throw Error('Invalid sender');}
@@ -39,13 +41,13 @@ app.whenReady().then(()=>{
  region=new RegionManager({root,native,onConfirm:fitPet,onEnd:()=>{stop();command('stop');record('陪看范围已关闭');}});
  session.defaultSession.setDisplayMediaRequestHandler(async(req,callback)=>{
   const source=(await sources()).find(s=>s.id===chosen);
-  if(!running||!source||req.frame!==win.webContents.mainFrame)return callback({});
+  if(!running||!source||!eligibleSource(source)||req.frame!==win.webContents.mainFrame)return callback({});
   callback({video:source});
  });
- ipcMain.handle('sources',async e=>{verify(e);return (await sources()).filter(s=>/抖音/.test(s.name)&&/Chrome|Edge/.test(s.name)).map(s=>({id:s.id,name:s.name}));});
+ ipcMain.handle('sources',async e=>{verify(e);return (await sources()).filter(eligibleSource).map(s=>({id:s.id,name:s.name||'抖音 Windows 客户端'}));});
  ipcMain.handle('begin',async(e,id)=>{
-  verify(e);stop();const s=(await sources()).find(s=>s.id===id&&/抖音/.test(s.name)&&/Chrome|Edge/.test(s.name));
-  if(!s)throw Error('请在 Chrome 多开1打开抖音视频，再刷新列表');chosen=id;running=true;generation++;region.setPaused(false);region.setStill(false);return s.name;
+  verify(e);stop();const s=(await sources()).find(s=>s.id===id&&eligibleSource(s));
+  if(!s)throw Error('请打开抖音 Windows 客户端或 Chrome/Edge 中的抖音，再刷新窗口');chosen=id;running=true;generation++;region.setPaused(false);region.setStill(false);return s.name||'抖音 Windows 客户端';
  });
  ipcMain.handle('stop',e=>{verify(e);stop();region.setPaused(true);return true;});
  ipcMain.handle('activity',(e,moving)=>{verify(e);region.setStill(!moving);return true;});
@@ -68,7 +70,7 @@ app.whenReady().then(()=>{
  ipcMain.handle('infer',async(e,image)=>{
   verify(e);if(!running||busy||!region.permits(chosen))return {skipped:true};
   if(typeof image!=='string'||image.length>2000000||!/^[A-Za-z0-9+/=]+$/.test(image))throw Error('Invalid frame');
-  const source=(await sources()).find(s=>s.id===chosen&&/抖音/.test(s.name));
+  const source=(await sources()).find(s=>s.id===chosen&&eligibleSource(s));
   if(!source){stop();record('窗口已关闭或离开抖音');return {stopped:true,text:'所选窗口已关闭或离开抖音，陪看已停止'};}
   const handle=Number(chosen.split(':')[1]);
   if(native.details(handle).minimized)return {waiting:true,text:'抖音窗口已最小化，陪看暂停'};
@@ -117,7 +119,7 @@ app.whenReady().then(()=>{
     else{
      const source=(await sources()).find(s=>Number(s.id.split(':')[1])===target.hwnd);
      if(!source)throw Error('视频窗口暂时不可采集');
-     record('正在识别视频区域',{target:target.title,sourceId:source.id});
+     record('正在识别视频区域',{target:target.title,sourceId:source.id,targetKind:targetKind(target)});
      writeFileSync(path.join(root,'work/last-drop-target.json'),JSON.stringify({id:source.id,anchor:target.anchor,name:source.name}));
      // A drag release is the native user gesture that starts capture in our own local renderer.
      win.webContents.executeJavaScript('window.doupetAttach('+JSON.stringify({id:source.id,anchor:target.anchor,name:source.name})+')',true).catch(e=>record('未能开始：'+e.message));

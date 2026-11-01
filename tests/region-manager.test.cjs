@@ -3,7 +3,7 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),vm=r
 const {EventEmitter}=require('node:events');
 function fixture(t){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'dfy-region-')),handlers=new Map();
- let details={bounds:{left:0,top:0,right:1600,bottom:1000},visible:true,minimized:false,title:'抖音 - Google Chrome'};
+ let details={bounds:{left:0,top:0,right:1600,bottom:1000},visible:true,minimized:false,title:'抖音 - Google Chrome',processPath:'C:\\Chrome\\chrome.exe'};
  const windows=[];
  class FakeWindow extends EventEmitter{
   constructor(bounds){super();this.bounds=bounds;this.webContents=new EventEmitter();Object.assign(this.webContents,{send(){},setWindowOpenHandler(){}});windows.push(this);}
@@ -12,7 +12,7 @@ function fixture(t){
   getBounds(){return this.bounds;}setBounds(b){this.bounds=b;}
  }
  const electron={BrowserWindow:FakeWindow,screen:{screenToDipRect:(_,r)=>r},ipcMain:{on(){},handle:(name,fn)=>handlers.set(name,fn)}};
- const context={module:{exports:{}},require:id=>id==='electron'?electron:id==='./geometry.cjs'?require('../app/geometry.cjs'):require(id),__dirname:path.resolve(__dirname,'../app'),process,setInterval:()=>0,clearInterval(){}};
+ const context={module:{exports:{}},require:id=>id==='electron'?electron:id.startsWith('./')?require('../app/'+id.slice(2)):require(id),__dirname:path.resolve(__dirname,'../app'),process,setInterval:()=>0,clearInterval(){}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../app/region-manager.cjs'),'utf8'),context);
  let ends=0,fits=0,fit=async()=>{};
  const manager=new context.module.exports.RegionManager({root,native:{details:()=>details},onConfirm:async rect=>{fits++;await fit(rect);},onEnd:()=>ends++});
@@ -47,4 +47,10 @@ test('invalid or foreign confirmation cannot start capture analysis',async t=>{
  await assert.rejects(f.handlers.get('region-confirm')({sender:{}},crop),/无效/);
  await assert.rejects(f.handlers.get('region-confirm')(f.event(),{x:0,y:0,w:.01,h:.01}),/太小/);
  assert.equal(f.area().enabled,false);f.manager.clear();await cancelled;
+});
+test('native-client confirmation survives caption changes and ends if the owning app changes',async t=>{
+ const f=fixture(t),m=f.manager;f.details.processPath='D:\\ByteDance\\douyin\\douyin.exe';f.details.title='douyin';
+ const pending=m.show(source,crop);await f.handlers.get('region-confirm')(f.event(),crop);await pending;
+ f.details.title='下一个视频';m.sync();assert.equal(m.permits(source),true);assert.equal(f.windows[0].isVisible(),false);
+ f.details.processPath='C:\\Windows\\notepad.exe';m.sync();assert.equal(m.permits(source),false);assert.equal(f.ends,1);
 });

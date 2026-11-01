@@ -2,6 +2,7 @@ const {BrowserWindow,screen,ipcMain}=require('electron');
 const {writeFileSync,mkdirSync}=require('node:fs');
 const path=require('node:path');
 const {checkedCrop,cropScreenRect}=require('./geometry.cjs');
+const {isDouyinWindow}=require('./window-policy.cjs');
 class RegionManager{
  constructor({root,native,onConfirm,onEnd}){
   Object.assign(this,{root,native,onConfirm,onEnd});this.window=null;this.selection=null;this.pending=null;
@@ -22,7 +23,7 @@ class RegionManager{
   this.timer=setInterval(()=>this.sync(),500);
  }
  verify(e){if(!this.window||e.sender!==this.window.webContents)throw Error('无效的选框窗口');}
- info(){if(!this.selection)return null;const info=this.native.details(Number(this.selection.sourceId.split(':')[1]));return info.bounds&&info.visible&&/抖音/.test(info.title)&&/Chrome|Edge/.test(info.title)?info:null;}
+ info(){if(!this.selection)return null;const info=this.native.details(Number(this.selection.sourceId.split(':')[1]));return isDouyinWindow(info)?info:null;}
  publish(enabled,rect){this.available=enabled;writeFileSync(this.file,JSON.stringify({enabled,rect:enabled?rect:null,updatedAt:Date.now(),pid:process.pid}));}
  send(){if(this.window&&!this.window.isDestroyed()&&this.selection)this.window.webContents.send('region-state',{crop:this.selection.crop,editing:this.selection.editing});}
  show(sourceId,proposed){
