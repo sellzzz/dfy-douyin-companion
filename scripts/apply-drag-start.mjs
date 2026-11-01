@@ -15,7 +15,7 @@ async function doupetNotify(action, win, petId) {
   } catch {}
 }
 ipcMain.on('doupet:dropped',(event,petId)=>{const win=BrowserWindow.fromWebContents(event.sender);if(win&&!win.isDestroyed())doupetNotify('drop',win,petId);});
-ipcMain.on('doupet:control',(event,action)=>{if(!['toggle','stop','confirm'].includes(action))return;const win=BrowserWindow.fromWebContents(event.sender);if(win&&!win.isDestroyed())doupetNotify(action,win,'main');});
+ipcMain.on('doupet:control',(event,action)=>{if(!['toggle','stop','confirm','settings'].includes(action))return;const win=BrowserWindow.fromWebContents(event.sender);if(win&&!win.isDestroyed())doupetNotify(action,win,'main');});
 ipcMain.handle('doupet:close',async(event)=>{const win=BrowserWindow.fromWebContents(event.sender);if(win&&!win.isDestroyed())await doupetNotify('stop',win,'main');return true;});
 `;
 const drop=`
@@ -35,6 +35,8 @@ for(const base of ['work/runtime/node_modules/dsh-pet','work/dsh-home/profiles/w
  const dir=resolve(root,base,'runtime/electron-helper');
  const file=existsSync(resolve(dir,'sprite/input.js'))?resolve(dir,'sprite/input.js'):resolve(dir,'sprite.js');
  edit(file,s=>{if(s.includes('// DouPet: release means'))return s;const anchor='    if (wasDragging) {';if(!s.includes(anchor))throw Error('Drag hook not found: '+file);return s.replace(anchor,drop+anchor);});
+ const menuFile=existsSync(resolve(dir,'sprite/menu.js'))?resolve(dir,'sprite/menu.js'):resolve(dir,'sprite.js');
+ edit(menuFile,s=>{if(s.includes("action: 'doupet-settings'"))return s;const anchor='    const tools = [';if(!s.includes(anchor))throw Error('Pet menu hook not found: '+menuFile);return s.replace(anchor,anchor+"\n      { label: '大模型接话设置', action: 'doupet-settings' },");});
  edit(resolve(dir,'preload.js'),s=>s.includes('doupetDropped(')?s:s.replace("contextBridge.exposeInMainWorld('petBridge', {",`contextBridge.exposeInMainWorld('petBridge', {
   doupetDropped(petId) { ipcRenderer.send('doupet:dropped',String(petId||'main')); },
   doupetControl(action) { ipcRenderer.send('doupet:control',action); },`));

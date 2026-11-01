@@ -14,7 +14,7 @@ test('bounded roaming uses upstream animation time, pauses at both ends and turn
  execFileSync(process.execPath,[path.join(root,'scripts/apply-region-roaming.mjs')],{stdio:'pipe'});
  const helper=path.join(runtime,'runtime/electron-helper'),frames=new Map(),controls=[];let frameId=0,tick,receive;
  const context=vm.createContext({navigator:{platform:'Win32'},console,Date,Math,
-  VIEW:{x:-800,y:-400,w:2000,h:1400},AREAS:[{x:0,y:0,width:2000,height:1400}],
+  VIEW:{x:-800,y:-400,w:2000,h:1400},AREAS:[{x:0,y:0,width:2000,height:1400}],OPEN_TARGET:'site',
   toScreen:v=>v*1.25,toLocal:v=>v/1.25,sprites:[],
   window:{DfyGeometry:require('../app/geometry.cjs'),__dshPetDebug:{},petBridge:{onCompanionArea:fn=>receive=fn,setBounds(){},doupetControl:action=>controls.push(action)}},
   setInterval:fn=>tick=fn,requestAnimationFrame:fn=>{frames.set(++frameId,fn);return frameId;},cancelAnimationFrame:id=>frames.delete(id)});
@@ -49,6 +49,13 @@ test('bounded roaming uses upstream animation time, pauses at both ends and turn
  s.justDragged=true;s.onClick({button:0});assert.equal(controls.length,1);s.justDragged=false;
  s.dragState.active=true;s.onClick({button:0});assert.equal(controls.length,1);s.dragState.active=false;
  s.onClick({button:0,shiftKey:true});assert.equal(controls.length,1);
+ let mounted,menuClosed=false,home=false;
+ context.PetShared.mountContextMenu=options=>{mounted=options;return {close:()=>menuClosed=true};};
+ Object.assign(s,{menuItems:[],setInteractive(){},syncInputBusy(){},syncInputRegions(){},visibleClampRect:()=>null,goHome:()=>home=true});
+ s.onContextMenu({clientX:10,clientY:10,preventDefault(){}});
+ assert.equal(mounted.tree[0].label,'大模型接话设置');assert.equal(mounted.tree[0].action,'doupet-settings');
+ mounted.onAction(mounted.tree[0]);assert.equal(controls.at(-1),'settings');assert.equal(menuClosed,true);assert.equal(s.menuOpen,false);
+ s.onMenuAction({action:'home'});assert.equal(home,true);
 });
 test('upstream patches are idempotent and keep all installed JavaScript parseable',{skip:!fs.existsSync(runtime)},()=>{
  const scripts=['apply-close-button.mjs','apply-drag-start.mjs','apply-region-roaming.mjs'];
@@ -60,6 +67,7 @@ test('upstream patches are idempotent and keep all installed JavaScript parseabl
  const sprite=fs.readFileSync(path.join(runtime,'runtime/electron-helper/sprite.js'),'utf8');
  assert.equal((sprite.match(/const pauseButton=/g)||[]).length,1);
  assert.equal((sprite.match(/const closeButton =/g)||[]).length,1);
+ assert.equal((sprite.match(/action: 'doupet-settings'/g)||[]).length,1);
  const main=fs.readFileSync(path.join(runtime,'runtime/electron-helper/main.js'),'utf8');
  assert.equal((main.match(/ipcMain.handle\('doupet:close'/g)||[]).length,1);
 });

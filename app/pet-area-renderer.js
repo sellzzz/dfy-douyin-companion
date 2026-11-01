@@ -5,6 +5,7 @@
  const states=new WeakMap(),original=PetSprite.prototype.sendBounds;
  const originalIdle=PetSprite.prototype.playIdle,originalMove=PetSprite.prototype.tryMove;
  const originalClick=PetSprite.prototype.onClick;
+ const originalMenuAction=PetSprite.prototype.onMenuAction;
  function areaFor(s){return latest?.enabled&&Date.now()>(s.doupetSuspendUntil||0)?latest.rect:null;}
  function interacting(s){return s.dragState?.active||s.menuOpen||s.chatOpen||s.sleeping||s.frozen;}
  function remember(s){s.customPos={rx:(s.pos.x+s.halfW)/VIEW.w,ry:(s.pos.y+s.halfH)/VIEW.h};}
@@ -12,6 +13,10 @@
   // A genuine plain click confirms an open editor. Drag release and shortcuts do not.
   if(!this.dragState?.active&&!this.dragState?.dragging&&!this.justDragged&&e?.button===0&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey)window.petBridge?.doupetControl?.('confirm');
   return originalClick.call(this,e);
+ };
+ PetSprite.prototype.onMenuAction=function(leaf,...args){
+  if(leaf?.action==='doupet-settings'){this.closeMenu();window.petBridge?.doupetControl?.('settings');return;}
+  return originalMenuAction.call(this,leaf,...args);
  };
  PetSprite.prototype.sendBounds=function(px,py){
   const area=areaFor(this);
