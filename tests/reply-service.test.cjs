@@ -17,21 +17,26 @@ test('only local text and bounded session context are forwarded; settings never 
  for(let i=0;i<6;i++)assert.equal((await f.service.compose('本地画面描述 '+i)).replySource,'deepseek');
  for(const call of f.calls){assert.equal(call.url,'https://api.deepseek.com/chat/completions');assert.equal(call.headers.Authorization,'Bearer unit-only-test-key');assert.ok(call.body.messages.length<=8);assert.ok(call.body.messages.every(m=>typeof m.content==='string'));assert.ok(!JSON.stringify(call.body).includes('image_url'));assert.ok(!JSON.stringify(call.body).includes('unit-only-test-key'));}
  assert.ok(f.calls.at(-1).body.messages.at(-1).content.includes('本地画面描述 5'));
- assert.ok(f.calls[0].body.messages[0].content.includes('润色'));
+ assert.ok(f.calls[0].body.messages[0].content.includes('画面描述'));
+ assert.ok(f.calls[0].body.messages[0].content.includes('组织'));
  assert.ok(f.calls[0].body.messages[0].content.includes('陪刷'));
- assert.ok(!f.calls[0].body.messages[0].content.includes('文字摘要'));
- assert.ok(f.calls.at(-1).body.messages.at(-1).content.includes('本地陪刷草稿'));
- assert.ok(f.calls.at(-1).body.messages.at(-1).content.includes('润色'));
+ assert.ok(!f.calls[0].body.messages[0].content.includes('润色'));
+ assert.ok(!f.calls[0].body.messages[0].content.includes('陪刷草稿'));
+ assert.ok(f.calls.at(-1).body.messages.at(-1).content.includes('本地画面描述'));
+ assert.ok(f.calls.at(-1).body.messages.at(-1).content.includes('组织'));
+ assert.ok(!f.calls.at(-1).body.messages.at(-1).content.includes('润色'));
  f.service.reset();await f.service.compose('新的陪看');assert.equal(f.calls.at(-1).body.messages.length,2);
 });
-test('cloud path refines companion draft instead of inventing from a dry caption',async t=>{
+test('cloud path composes companion speech from a factual description, not polish of a local draft',async t=>{
  const f=fixture(t);f.service.save({enabled:true,key:'unit-only-test-key'});
- const draft='哇这小狗跑得好欢。';
- assert.equal((await f.service.compose(draft)).replySource,'deepseek');
+ const description='画面中有一只小狗在草地上跑。';
+ assert.equal((await f.service.compose(description)).replySource,'deepseek');
  const system=f.calls[0].body.messages[0].content,user=f.calls[0].body.messages.at(-1).content;
- assert.match(system,/润色/);assert.match(system,/口语|陪刷|一起刷/);
- assert.ok(!/解说员/.test(system)||system.includes('不要变成解说员'));
- assert.ok(user.includes(draft));assert.ok(user.includes('陪刷草稿'));
+ assert.match(system,/画面描述/);assert.match(system,/组织/);assert.match(system,/口语|陪刷|一起刷/);
+ assert.ok(!system.includes('润色'));assert.ok(!system.includes('陪刷草稿'));
+ assert.ok(!/解说员/.test(system)||/不要.*解说/.test(system));
+ assert.ok(user.includes(description));assert.ok(user.includes('本地画面描述'));assert.ok(user.includes('组织'));
+ assert.ok(!user.includes('润色'));assert.ok(!user.includes('陪刷草稿'));
 });
 test('auth and empty-frame results never reach the remote model',async t=>{
  const f=fixture(t);f.service.save({enabled:true,key:'unit-only-test-key'});

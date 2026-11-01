@@ -61,6 +61,6 @@ let difference=999;if(lastPixels){let total=0;for(let i=0;i<pixels.length;i+=4)t
 lastPixels=pixels;if(difference>1.5)lastMotion=Date.now();const moving=Date.now()-lastMotion<8000;await window.companion.activity(moving);
 if(!moving){status('画面暂时静止，宠物歇一会儿。');return;}
 status('正在看画面…');const result=await window.companion.infer(c.toDataURL('image/jpeg',.7).split(',')[1]);
-if(turn!==epoch||!active)return;if(result.stopped){await stop();status(result.text);}else if(result.waiting){status(result.text);}else if(!result.skipped){$('response').textContent=result.text;$('local-summary').textContent='本地陪刷草稿：'+result.localSummary;status(`陪看中 · ${result.replySource==='deepseek'?'DeepSeek 接话':result.cloudStatus==='fallback'?'本地结果（'+result.cloudMessage+'）':'只用本地，不推送'} · ${result.latencySeconds.toFixed(2)} 秒`);}
+if(turn!==epoch||!active)return;if(result.stopped){await stop();status(result.text);}else if(result.waiting){status(result.text);}else if(!result.skipped){$('response').textContent=result.text;$('local-summary').textContent=(result.cloudStatus==='off'?'本地陪刷：':'本地画面描述：')+result.localSummary;status(`陪看中 · ${result.replySource==='deepseek'?'DeepSeek 接话':result.cloudStatus==='fallback'?'本地结果（'+result.cloudMessage+'）':'只用本地，不推送'} · ${result.latencySeconds.toFixed(2)} 秒`);}
 }catch(e){if(turn===epoch)status('暂时无法回应：'+e.message);}finally{busy=false;}},5000);
 window.addEventListener('resize',draw);refresh().then(()=>{if(new URLSearchParams(location.search).get('mode')==='drag')status('拖到抖音视频，确认绿色框后开始陪看');}).catch(e=>status(e.message));

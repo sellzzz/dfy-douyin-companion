@@ -2,7 +2,7 @@
 
 **把桌宠拖到抖音视频上，调整绿色框并确认，它就在框里陪你看。**
 
-Windows 上的本地 AI 桌宠原型。复用 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 的桌宠、动画和气泡能力，用 Electron 采集选定窗口，再交给本机 Ollama 视觉模型生成陪刷口语草稿。
+Windows 上的本地 AI 桌宠原型。复用 [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) 的桌宠、动画和气泡能力，用 Electron 采集选定窗口，再交给本机 Ollama 视觉模型；默认直接陪刷，开启 DeepSeek 后改为“描述 → 组织话语”。
 
 > 早期原型，已在一台 Windows 11 / RTX 5070 电脑上跑通真实拖放、画面理解和气泡更新。尚无语音理解、长期记忆或连续视频推理。模型可能误认画面和人物，回应不代表视频事实。
 
@@ -45,17 +45,17 @@ pwsh -NoProfile -File .\scripts\start-doupet.ps1
 
 ## 可选：让 DeepSeek 接话
 
-默认只用本地模型，不向云端推送。这里的 DeepSeek 接入是两段处理：**画面 → 本地模型写陪刷口语草稿 → 可选把草稿发给 DeepSeek 润色 → 气泡回应**，不会把截图发给 DeepSeek。
+默认只用本地模型直接陪刷，不向云端推送。开启 DeepSeek 后是两段处理：**画面 → 本地模型只写画面描述 → DeepSeek 根据描述组织陪刷接话 → 气泡回应**（不是润色本地草稿），不会把截图发给 DeepSeek。
 
 **右键桌宠 → 大模型接话设置** 即可打开设置。也可从系统托盘打开，或使用备用控制面板上方的同名折叠栏。自行在本机填写 DeepSeek API Key，勾选“开启大模型接话”并保存即可；也可以先保存密钥、不勾选，点击“测试连接”。不要把密钥发到聊天、截图、Issue 或代码仓库。
 
 - 使用官方 `deepseek-flash`，地址固定为 `https://api.deepseek.com/chat/completions`；采用非思考模式，减少接话等待。
-- 开启后仅发送本地陪刷草稿和本次陪看最近三轮文字上下文；原始截图、音频、窗口标题、浏览器 Cookie 不包含在云端请求中。DeepSeek API 费用由用户承担。
-- 关闭并保存后不再推送，并取消正在等待的云端请求；已发送的数据不能撤回。DeepSeek 连接失败、超时或余额不足时直接用本地陪刷草稿，并暂停重试 30 秒。
+- 开启后本地 VL 改为只输出事实性画面描述；仅发送该描述和本次陪看最近三轮文字上下文。原始截图、音频、窗口标题、浏览器 Cookie 不包含在云端请求中。DeepSeek API 费用由用户承担。
+- 关闭并保存后不再推送，本地 VL 恢复直接写陪刷口语，并取消正在等待的云端请求；已发送的数据不能撤回。DeepSeek 连接失败、超时或余额不足时气泡回退为本地画面描述（不另编陪刷句），并暂停重试 30 秒。
 - 密钥用 Electron `safeStorage` 的 Windows DPAPI 加密保存在本机 `work/dsh-home/doupet/reply-config.json`，不会回传给界面，也不会进入 Git。它不能防止同一 Windows 用户身份下的其他程序访问。
 - “测试连接”只发送固定测试文字，不发送陪看内容；本地模型和桌宠不需要配置该密钥。
 
-本地识别可能出错，大模型只收到文字草稿去润色，不能通过图片纠正这些错误。当前上下文只保存在本次进程内，不是长期记忆。
+本地识别可能出错，大模型只收到文字描述去组织话语，不能通过图片纠正这些错误。当前上下文只保存在本次进程内，不是长期记忆。
 
 ## 工作原理
 
@@ -67,8 +67,8 @@ pwsh -NoProfile -File .\scripts\start-doupet.ps1
   → 显示可调整的绿色框，等待本人确认
   → 隐藏选框；宠物按范围缩小（需要时），按原有动画节奏活动
   → 约每 5 秒读取一帧
-  → Ollama / Qwen3-VL 生成陪刷口语草稿（像朋友一起刷）
-  → 可选：只将草稿文字交给 DeepSeek 润色接话（默认关闭；关/失败时气泡用本地草稿）
+  → Ollama / Qwen3-VL：关闭 DeepSeek 时直接写陪刷口语；开启时只写画面描述
+  → 可选：开启后只将描述文字交给 DeepSeek 组织陪刷接话（默认关闭；关=本地陪刷；失败=气泡用本地描述）
   → dsh-pet 气泡显示
 ```
 
@@ -80,7 +80,7 @@ pwsh -NoProfile -File .\scripts\start-doupet.ps1
 
 ## 数据与权限
 
-- 视觉推理使用 `127.0.0.1:11434` 上的本机 Ollama；默认不调用云端。只有在本机设置中开启“大模型接话”后，陪刷草稿文字才交给 DeepSeek 润色。
+- 视觉推理使用 `127.0.0.1:11434` 上的本机 Ollama；默认不调用云端、本地直接陪刷。只有在本机设置中开启“大模型接话”后，才把画面描述交给 DeepSeek 组织陪刷话语。
 - 不自动点赞、评论、发私信、发布视频或操作抖音账号；不读取 Cookie 或浏览器密码数据库。
 - 原始截图只在内存中处理，不写入磁盘；本机 `work/` 保存依赖、配置、运行日志和最近一次文字回应。
 - 暂停会停止模型分析，但备用面板中的本地预览仍可继续；“结束采集”停止视频流。
@@ -109,7 +109,7 @@ npm run check
 | --- | --- |
 | [PC2005-cloud/dsh-pet](https://github.com/PC2005-cloud/dsh-pet) | 核心桌宠运行时、透明动画、拖拽交互、气泡接口。我们以安装补丁加入拖放选框、框内漫游、暂停和关闭联动。 |
 | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | 早期插件集成与模块组合的生态基础；当前实时陪看可使用 dsh-pet 独立模式，不要求 DSH 宿主运行。 |
-| [DeepSeek API](https://api-docs.deepseek.com/) | 可选的云端文字润色，只接收本地陪刷草稿和短期文字上下文；默认关闭。 |
+| [DeepSeek API](https://api-docs.deepseek.com/) | 可选的云端组织话语，只接收本地画面描述和短期文字上下文；默认关闭。 |
 | [kdcadmin/dsh_douyin_tools](https://github.com/kdcadmin/dsh_douyin_tools) | 早期只读视频详情和 MCP 链路验证的参考及复用来源；当前发布版本不启用其账号操作或自动互动功能。 |
 | [Electron](https://github.com/electron/electron) | 桌面窗口、选定窗口采集、托盘及主进程/渲染进程通信。 |
 | [Ollama](https://github.com/ollama/ollama) | 本地模型管理、GPU 推理和 HTTP 接口。 |
