@@ -29,7 +29,7 @@ window.doupetAttach=async function(target){
   c.getContext('2d').drawImage(video,0,0,c.width,c.height);
   crop=await window.companion.locate(c.toDataURL('image/jpeg',.75).split(',')[1],target.anchor,video.videoWidth/video.videoHeight);
   if(turn!==epoch||attempt!==attachmentId)return;
-  status('请调整绿色边框，并点击“确认陪看”。');
+  status('画好绿色框后，点一下桌宠开始陪看。');
   crop=await window.companion.confirmRegion(crop);
   if(turn!==epoch||attempt!==attachmentId)return;
   confirmed=true;

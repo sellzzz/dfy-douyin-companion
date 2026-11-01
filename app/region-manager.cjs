@@ -56,6 +56,11 @@ class RegionManager{
   this.publish(this.selection.confirmed&&!this.paused&&!this.still,rect);
  }
  permits(sourceId){return !!this.selection?.confirmed&&this.available&&this.selection.sourceId===sourceId;}
+ requestPetConfirmation(){
+  if(!this.pending||!this.selection?.editing||this.confirming||!this.window||this.window.isDestroyed())return false;
+  // Ask the editor to submit its current draft, not the initial proposed rectangle.
+  this.window.webContents.send('region-confirm-request');return true;
+ }
  setPaused(value){this.paused=!!value;this.sync();}
  setStill(value){this.still=!!value;this.sync();}
  clear(reason='陪看已结束'){

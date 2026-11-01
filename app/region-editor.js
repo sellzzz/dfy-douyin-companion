@@ -6,7 +6,7 @@ function paint(){
  const above=crop.y*innerHeight-toolbar.offsetHeight-12;
  toolbar.style.top=Math.max(8,above>=8?above:Math.min(innerHeight-toolbar.offsetHeight-8,(crop.y+crop.h)*innerHeight+12))+'px';
 }
-window.regionEditor.onState(state=>{crop=state.crop;edit=state.editing;document.body.classList.toggle('confirmed',!edit);note.textContent=state.message||'拖动边框调整范围，确认后宠物在框里活动。';paint();});
+window.regionEditor.onState(state=>{crop=state.crop;edit=state.editing;document.body.classList.toggle('confirmed',!edit);note.textContent=state.message||'画好框后，点一下桌宠就开始陪看。';paint();});
 document.addEventListener('pointerdown',e=>{
  if(!edit||toolbar.contains(e.target))return;
  if(!redraw&&e.target!==box&&!e.target.dataset.edge)return;
@@ -27,5 +27,7 @@ document.addEventListener('pointermove',e=>{
 document.addEventListener('pointerup',()=>{if(!drag)return;drag=null;redraw=false;document.body.style.cursor='';});
 document.getElementById('redraw').onclick=()=>{redraw=true;document.body.style.cursor='crosshair';note.textContent='在视频上拖动，重新画出范围。';};
 document.getElementById('cancel').onclick=()=>window.regionEditor.cancel();
-document.getElementById('confirm').onclick=async()=>{try{await window.regionEditor.confirm(crop);}catch(e){note.textContent=e.message.replace(/^Error invoking remote method[^:]*: /,'');}};
+async function confirmCurrent(){if(!edit||drag)return;try{await window.regionEditor.confirm(crop);}catch(e){note.textContent=e.message.replace(/^Error invoking remote method[^:]*: /,'');}}
+document.getElementById('confirm').onclick=confirmCurrent;
+window.regionEditor.onConfirmRequest(confirmCurrent);
 window.addEventListener('resize',paint);window.regionEditor.ready();

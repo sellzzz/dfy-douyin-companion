@@ -6,7 +6,7 @@ function fixture(t){
  let details={bounds:{left:0,top:0,right:1600,bottom:1000},visible:true,minimized:false,title:'抖音 - Google Chrome',processPath:'C:\\Chrome\\chrome.exe'};
  const windows=[];
  class FakeWindow extends EventEmitter{
-  constructor(bounds){super();this.bounds=bounds;this.webContents=new EventEmitter();Object.assign(this.webContents,{send(){},setWindowOpenHandler(){}});windows.push(this);}
+  constructor(bounds){super();this.bounds=bounds;this.messages=[];this.webContents=new EventEmitter();Object.assign(this.webContents,{send:(...args)=>this.messages.push(args),setWindowOpenHandler(){}});windows.push(this);}
   setAlwaysOnTop(){} setMenuBarVisibility(){} loadFile(){} setIgnoreMouseEvents(value){this.clickThrough=value;}
   isDestroyed(){return !!this.destroyed;}destroy(){this.destroyed=true;}isVisible(){return !!this.visible;}showInactive(){this.visible=true;}hide(){this.visible=false;}
   getBounds(){return this.bounds;}setBounds(b){this.bounds=b;}
@@ -53,4 +53,12 @@ test('native-client confirmation survives caption changes and ends if the owning
  const pending=m.show(source,crop);await f.handlers.get('region-confirm')(f.event(),crop);await pending;
  f.details.title='下一个视频';m.sync();assert.equal(m.permits(source),true);assert.equal(f.windows[0].isVisible(),false);
  f.details.processPath='C:\\Windows\\notepad.exe';m.sync();assert.equal(m.permits(source),false);assert.equal(f.ends,1);
+});
+test('pet clicks submit the editor draft only while an unconfirmed selection is open',async t=>{
+ const f=fixture(t),m=f.manager;assert.equal(m.requestPetConfirmation(),false);
+ const pending=m.show(source,crop);assert.equal(m.requestPetConfirmation(),true);
+ assert.deepEqual(f.windows[0].messages.at(-1),['region-confirm-request']);assert.equal(m.permits(source),false);
+ const edited={x:.2,y:.1,w:.6,h:.7};await f.handlers.get('region-confirm')(f.event(),edited);assert.deepEqual(JSON.parse(JSON.stringify(await pending)),edited);
+ assert.deepEqual(f.area().rect,{left:320,top:100,right:1280,bottom:800});assert.equal(m.requestPetConfirmation(),false);
+ m.setPaused(true);assert.equal(m.requestPetConfirmation(),false);
 });

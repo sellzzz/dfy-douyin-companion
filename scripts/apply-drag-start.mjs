@@ -15,7 +15,7 @@ async function doupetNotify(action, win, petId) {
   } catch {}
 }
 ipcMain.on('doupet:dropped',(event,petId)=>{const win=BrowserWindow.fromWebContents(event.sender);if(win&&!win.isDestroyed())doupetNotify('drop',win,petId);});
-ipcMain.on('doupet:control',(event,action)=>{if(!['toggle','stop'].includes(action))return;const win=BrowserWindow.fromWebContents(event.sender);if(win&&!win.isDestroyed())doupetNotify(action,win,'main');});
+ipcMain.on('doupet:control',(event,action)=>{if(!['toggle','stop','confirm'].includes(action))return;const win=BrowserWindow.fromWebContents(event.sender);if(win&&!win.isDestroyed())doupetNotify(action,win,'main');});
 ipcMain.handle('doupet:close',async(event)=>{const win=BrowserWindow.fromWebContents(event.sender);if(win&&!win.isDestroyed())await doupetNotify('stop',win,'main');return true;});
 `;
 const drop=`

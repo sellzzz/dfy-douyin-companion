@@ -52,7 +52,7 @@ app.whenReady().then(()=>{
  ipcMain.handle('stop',e=>{verify(e);stop();region.setPaused(true);return true;});
  ipcMain.handle('activity',(e,moving)=>{verify(e);region.setStill(!moving);return true;});
  ipcMain.handle('end',e=>{verify(e);stop();region.clear();return true;});
- ipcMain.handle('confirm-region',async(e,crop)=>{verify(e);record('请调整绿色边框，再确认陪看');return region.show(chosen,crop);});
+ ipcMain.handle('confirm-region',async(e,crop)=>{verify(e);record('画好框后，点一下桌宠开始陪看');return region.show(chosen,crop);});
  ipcMain.handle('status',(e,status)=>{verify(e);record(String(status).slice(0,120));});
  ipcMain.handle('hint',async(e,text)=>{verify(e);return hint(String(text).slice(0,100));});
  ipcMain.handle('locate',async(e,image,anchor,aspect)=>{
@@ -124,7 +124,8 @@ app.whenReady().then(()=>{
      // A drag release is the native user gesture that starts capture in our own local renderer.
      win.webContents.executeJavaScript('window.doupetAttach('+JSON.stringify({id:source.id,anchor:target.anchor,name:source.name})+')',true).catch(e=>record('未能开始：'+e.message));
     }
-   }else if(req.url==='/toggle'){command('toggle');}
+   }else if(req.url==='/confirm'){region.requestPetConfirmation();}
+   else if(req.url==='/toggle'){command('toggle');}
    else if(req.url==='/stop'){stop();region.clear();command('stop');record('陪看已结束');}
    else{res.writeHead(404);return res.end();}
    res.writeHead(200,{'content-type':'application/json'});res.end('{"ok":true}');

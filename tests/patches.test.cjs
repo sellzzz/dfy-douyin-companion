@@ -12,11 +12,11 @@ test('desktop launcher folder contains a valid Electron entry point',()=>{
 
 test('bounded roaming uses upstream animation time, pauses at both ends and turns at edges',{skip:!fs.existsSync(runtime)},()=>{
  execFileSync(process.execPath,[path.join(root,'scripts/apply-region-roaming.mjs')],{stdio:'pipe'});
- const helper=path.join(runtime,'runtime/electron-helper'),frames=new Map();let frameId=0,tick,receive;
+ const helper=path.join(runtime,'runtime/electron-helper'),frames=new Map(),controls=[];let frameId=0,tick,receive;
  const context=vm.createContext({navigator:{platform:'Win32'},console,Date,Math,
   VIEW:{x:-800,y:-400,w:2000,h:1400},AREAS:[{x:0,y:0,width:2000,height:1400}],
   toScreen:v=>v*1.25,toLocal:v=>v/1.25,sprites:[],
-  window:{DfyGeometry:require('../app/geometry.cjs'),__dshPetDebug:{},petBridge:{onCompanionArea:fn=>receive=fn,setBounds(){}}},
+  window:{DfyGeometry:require('../app/geometry.cjs'),__dshPetDebug:{},petBridge:{onCompanionArea:fn=>receive=fn,setBounds(){},doupetControl:action=>controls.push(action)}},
   setInterval:fn=>tick=fn,requestAnimationFrame:fn=>{frames.set(++frameId,fn);return frameId;},cancelAnimationFrame:id=>frames.delete(id)});
  vm.runInContext(fs.readFileSync(path.join(helper,'shared-core.js'),'utf8')+'\nconst S=PetShared;',context);
  vm.runInContext(fs.readFileSync(path.join(helper,'sprite.js'),'utf8'),context);
@@ -45,6 +45,10 @@ test('bounded roaming uses upstream animation time, pauses at both ends and turn
  s.handleEnded();assert.equal(s.facing,'right');
  s.startMoveDrive(video);receive({enabled:false});tick();assert.equal(s.moveRef,null);assert.equal(s.pendingMove,null);
  assert.equal(s.lastAnimation,'idle');
+ s.animations.clicks=['click'];s.onClick({button:0});assert.deepEqual(controls,['confirm']);assert.equal(s.lastAnimation,'click');
+ s.justDragged=true;s.onClick({button:0});assert.equal(controls.length,1);s.justDragged=false;
+ s.dragState.active=true;s.onClick({button:0});assert.equal(controls.length,1);s.dragState.active=false;
+ s.onClick({button:0,shiftKey:true});assert.equal(controls.length,1);
 });
 test('upstream patches are idempotent and keep all installed JavaScript parseable',{skip:!fs.existsSync(runtime)},()=>{
  const scripts=['apply-close-button.mjs','apply-drag-start.mjs','apply-region-roaming.mjs'];
