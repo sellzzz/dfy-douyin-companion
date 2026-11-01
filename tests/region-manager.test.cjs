@@ -25,9 +25,11 @@ test('human confirmation gates inference; pause, stillness, minimize and resize 
  m.sync();assert.equal(m.permits(source),false);assert.equal(f.area().enabled,false);
  await f.handlers.get('region-confirm')(f.event(),crop);await pending;
  assert.equal(m.permits(source),true);assert.equal(m.permits('window:other'),false);assert.equal(f.windows[0].clickThrough,true);
+ assert.equal(f.windows[0].isVisible(),false);m.sync();assert.equal(f.windows[0].isVisible(),false);
+ f.windows[0].emit('ready-to-show');assert.equal(f.windows[0].isVisible(),false);
  assert.deepEqual(f.area().rect,{left:160,top:200,right:1280,bottom:800});
  for(const method of ['setPaused','setStill']){m[method](true);assert.equal(m.permits(source),false);m[method](false);assert.equal(m.permits(source),true);}
- f.details.minimized=true;m.sync();assert.equal(m.permits(source),false);f.details.minimized=false;m.sync();assert.equal(m.permits(source),true);
+ f.details.minimized=true;m.sync();assert.equal(m.permits(source),false);f.details.minimized=false;m.sync();assert.equal(m.permits(source),true);assert.equal(f.windows[0].isVisible(),false);
  f.details.bounds={left:-1000,top:-500,right:0,bottom:300};m.sync();assert.equal(m.permits(source),false);
  await new Promise(resolve=>setImmediate(resolve));m.sync();assert.equal(m.permits(source),true);assert.equal(f.fits,2);
  assert.deepEqual(f.area().rect,{left:-900,top:-340,right:-200,bottom:140});

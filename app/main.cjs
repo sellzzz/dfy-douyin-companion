@@ -27,7 +27,8 @@ async function pet(pathname,body){
  const r=await fetch('http://127.0.0.1:3081/dsh-pet-7340'+pathname,{method:'POST',headers:{'Content-Type':'application/json','x-dsh-pet-token':info.token},body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});
  if(!r.ok)throw Error('桌宠连接失败');const j=await r.json();if(j.ok===false)throw Error('桌宠：'+j.reason);return j;
 }
-async function hint(text){const lease=await pet('/lock?pet=main&surface=desktop',{ttl:8000});try{await pet('/broadcast?pet=main&surface=desktop&lock='+lease.lockId,{text,duration:6000,anim:false});}finally{await pet('/lock/release?pet=main&surface=desktop',{lockId:lease.lockId});}}
+// Text-only bubbles must not freeze and restart the upstream walking animation.
+async function hint(text){await pet('/broadcast?pet=main&surface=desktop',{text,duration:6000,anim:false});}
 async function fitPet(rect){
  const file=path.join(root,'work/dsh-home/dsh-pet/main-config.jsonc');
  const config=JSON.parse(readFileSync(file,'utf8').replace(/^\uFEFF/,''));const item=config.pets.find(p=>p.id==='main');
@@ -81,9 +82,8 @@ app.whenReady().then(()=>{
    const j=await r.json(),text=(j.message?.content||'').trim().slice(0,100),latency=(Date.now()-started)/1000;
    if(!running||generation!==turn||latency>15)return {skipped:true};
    if(!text||/WAIT_AUTH|WAIT_VIDEO|<think>/.test(text))return {waiting:true,text:/WAIT_AUTH/.test(text)?'检测到登录或验证，请本人处理':'等待清晰的视频画面'};
-   const lease=await pet('/lock?pet=main&surface=desktop',{ttl:10000});
-   try{if(!running||generation!==turn)return {skipped:true};await pet('/broadcast?pet=main&surface=desktop&lock='+lease.lockId,{text,duration:7000,anim:false});}
-   finally{await pet('/lock/release?pet=main&surface=desktop',{lockId:lease.lockId});}
+   if(!running||generation!==turn)return {skipped:true};
+   await pet('/broadcast?pet=main&surface=desktop',{text,duration:7000,anim:false});
    const result={text,latencySeconds:latency,modelUsed:true,source:dragOnly?'pet-drop-auto-crop':'user-selected-window-crop',at:new Date().toISOString()};
    writeFileSync(path.join(root,'work/window-companion-result.json'),JSON.stringify(result,null,2));
    return result;

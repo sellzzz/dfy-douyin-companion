@@ -33,5 +33,8 @@ for(const base of ['work/runtime/node_modules/dsh-pet','work/dsh-home/profiles/w
  patch('main.js',s=>s.includes('// DFY confirmed area bridge BEGIN')?s.replace(/\/\/ DFY confirmed area bridge BEGIN[\s\S]*?\/\/ DFY confirmed area bridge END\n?/,bridge.trimStart()):s.replace("  ipcMain.on('pet:set-interactive'",bridge+"  ipcMain.on('pet:set-interactive'"));
  const input=existsSync(resolve(dir,'sprite/input.js'))?'sprite/input.js':'sprite.js';
  patch(input,s=>s.includes('this.doupetSuspendUntil =')?s:s.replace('    // DouPet: release means','    // DouPet: release means').replace('      this.dragTrail = [];\n      this.customPos =','      this.doupetSuspendUntil = Date.now() + 1500;\n      this.dragTrail = [];\n      this.customPos ='));
+ // Keep upstream video.currentTime-driven walking; constrain only its planner.
+ const movement=existsSync(resolve(dir,'sprite/motion.js'))?'sprite/motion.js':'sprite.js';
+ patch(movement,s=>s.includes('(this.doupetPlanMove || S.planMove).call(this, {')?s:s.replace('const plan = S.planMove({','const plan = (this.doupetPlanMove || S.planMove).call(this, {'));
 }
 console.log('Confirmed-region pet roaming applied.');

@@ -15,7 +15,7 @@ class RegionManager{
    this.confirming=true;try{await this.onConfirm(rect);}finally{this.confirming=false;}
    if(this.selection!==selection||this.pending!==pending)throw Error('选框已经取消');
    selection.crop=crop;selection.confirmed=true;selection.editing=false;selection.lastSize=[rect.right-rect.left,rect.bottom-rect.top].join(':');
-   this.window.setIgnoreMouseEvents(true,{forward:true});this.send();this.publish(!this.paused&&!this.still,rect);
+   this.window.setIgnoreMouseEvents(true,{forward:true});this.send();this.window.hide();this.publish(!this.paused&&!this.still,rect);
    this.pending=null;pending?.resolve(crop);return crop;
   });
   ipcMain.handle('region-cancel',e=>{this.verify(e);this.clear('已取消选框');this.onEnd();});
@@ -32,7 +32,7 @@ class RegionManager{
   this.window=new BrowserWindow({...dip,show:false,frame:false,transparent:true,resizable:false,skipTaskbar:true,focusable:false,hasShadow:false,title:'DFY 确认陪看范围',webPreferences:{preload:path.join(__dirname,'region-preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
   this.window.setAlwaysOnTop(true,'floating');this.window.setMenuBarVisibility(false);
   this.window.webContents.setWindowOpenHandler(()=>({action:'deny'}));this.window.webContents.on('will-navigate',e=>e.preventDefault());
-  this.window.once('ready-to-show',()=>{if(this.window&&!this.window.isDestroyed()){this.window.showInactive();this.send();}});
+  this.window.once('ready-to-show',()=>{if(this.window&&!this.window.isDestroyed()){if(this.selection?.editing)this.window.showInactive();this.send();}});
   this.window.loadFile('region-editor.html');
   return new Promise((resolve,reject)=>{this.pending={resolve,reject};});
  }
@@ -43,7 +43,8 @@ class RegionManager{
   const r=info.bounds,dip=screen.screenToDipRect(null,{x:r.left,y:r.top,width:r.right-r.left,height:r.bottom-r.top});
   if(this.window&&!this.window.isDestroyed()){
    const old=this.window.getBounds();if(['x','y','width','height'].some(k=>old[k]!==dip[k]))this.window.setBounds(dip,false);
-   if(!this.window.isVisible())this.window.showInactive();
+   if(this.selection.editing){if(!this.window.isVisible())this.window.showInactive();}
+   else if(this.window.isVisible())this.window.hide();
   }
   const rect=cropScreenRect(r,this.selection.crop),size=[rect.right-rect.left,rect.bottom-rect.top].join(':');
   if(rect.right-rect.left<180||rect.bottom-rect.top<120){this.publish(false);return;}

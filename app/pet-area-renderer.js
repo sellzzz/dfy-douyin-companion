@@ -1,8 +1,12 @@
-// Runs inside the upstream pet renderer; the selected video bounds never depend on pet movement.
+// Keep upstream idle/turn/walk animations and their video-timed motion drive.
+// Only the movement planner and the final bounds are restricted to the chosen video.
 (() => {
  let latest=null;
  const states=new WeakMap(),original=PetSprite.prototype.sendBounds;
+ const originalIdle=PetSprite.prototype.playIdle,originalMove=PetSprite.prototype.tryMove;
  function areaFor(s){return latest?.enabled&&Date.now()>(s.doupetSuspendUntil||0)?latest.rect:null;}
+ function interacting(s){return s.dragState?.active||s.menuOpen||s.chatOpen||s.sleeping||s.frozen;}
+ function remember(s){s.customPos={rx:(s.pos.x+s.halfW)/VIEW.w,ry:(s.pos.y+s.halfH)/VIEW.h};}
  PetSprite.prototype.sendBounds=function(px,py){
   const area=areaFor(this);
   if(area&&!this.dragState?.active){
@@ -11,24 +15,43 @@
   }
   return original.call(this,px,py);
  };
+ PetSprite.prototype.playIdle=function(...args){
+  const fixed=this.pet.fixedEnabled;
+  // The upstream chain chooses its own actions after the current animation ends.
+  if(areaFor(this)&&!interacting(this))this.pet.fixedEnabled=false;
+  try{return originalIdle.apply(this,args);}finally{this.pet.fixedEnabled=fixed;}
+ };
+ PetSprite.prototype.doupetPlanMove=function(options){
+  const area=areaFor(this);if(!area)return S.planMove(options);
+  if(interacting(this))return null;
+  const left=toLocal(area.left+8)-VIEW.x,right=toLocal(area.right-8)-VIEW.x;
+  const top=toLocal(area.top+8)-VIEW.y,bottom=toLocal(area.bottom-8)-VIEW.y;
+  const cx=this.pos.x+this.halfW,cy=this.pos.y+this.halfH;
+  const room=options.dir>0?right-this.halfW-cx:cx-this.halfW-left;
+  const maxDist=Math.min(options.maxDist,room*.9);
+  if(maxDist<12||this.size>right-left||this.height>bottom-top)return null;
+  return S.planMove({...options,cx,cy,minDist:Math.min(options.minDist,maxDist*.6),maxDist,margin:0,sideAllow:0,areas:[{x:left,y:top,width:right-left,height:bottom-top}]});
+ };
+ PetSprite.prototype.tryMove=function(preferredName,...args){
+  const result=originalMove.call(this,preferredName,...args);
+  if(result===false&&!preferredName&&areaFor(this)&&!interacting(this)&&this.animations.turn.length){
+   // Play the real turn animation; upstream handleEnded flips facing afterwards.
+   const turn=S.pick(this.animations.turn,this.anim);this.playOnce(turn);return turn;
+  }
+  return result;
+ };
  window.petBridge?.onCompanionArea?.(area=>{latest=area;});
  setInterval(()=>{
   for(const s of sprites){
-   let state=states.get(s);if(!state){state={signature:'',next:0};states.set(s,state);}
-   const area=areaFor(s);
-   if(!area){if(state.signature&&!s.dragState.active)s.stopMove();state.signature='';continue;}
-   if(s.dragState.active||s.menuOpen||s.chatOpen||s.sleeping)continue;
-   const signature=JSON.stringify(area);
-   if(state.signature!==signature){s.stopMove();state.signature=signature;s.sendBounds(s.pos.x,s.pos.y);state.next=0;}
-   if(Date.now()<state.next||s.posFollow)continue;
-   const size={width:toScreen(s.size),height:toScreen(s.size*9/16)};
-   const p=window.DfyGeometry.confinePetPosition({x:area.left+Math.random()*(area.right-area.left-size.width),y:area.top+Math.random()*(area.bottom-area.top-size.height)},area,size);
-   if(!p.fits)continue;
-   const targetX=toLocal(p.x)-VIEW.x+s.halfW,targetY=toLocal(p.y)-VIEW.y-s.bottomPad+s.halfH;
-   s.facing=targetX<s.pos.x+s.halfW?'left':'right';
-   s.moveToCenter(targetX/VIEW.w,targetY/VIEW.h,'line',2800+Math.random()*1800);
-   state.next=Date.now()+6000+Math.random()*4000;
-   window.__dshPetDebug.companionArea={rect:area,size,at:Date.now()};
+   let state=states.get(s);if(!state){state={signature:''};states.set(s,state);}
+   const area=areaFor(s),signature=area?JSON.stringify(area):'';
+   if(state.signature===signature||s.dragState?.active)continue;
+   const wasMoving=s.moveRef!=null||s.pendingMove||s.posFollow;
+   s.stopMove();state.signature=signature;
+   if(area)s.sendBounds(s.pos.x,s.pos.y);
+   remember(s);
+   if(wasMoving&&!interacting(s)&&s.animations.idle.length)s.playOnce(S.pick(s.animations.idle,s.anim));
+   window.__dshPetDebug.companionArea={rect:area,mode:'upstream-animation-chain',at:Date.now()};
   }
  },300);
 })();
