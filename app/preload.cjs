@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('companion',{
  stop:()=>ipcRenderer.invoke('stop'),infer:image=>ipcRenderer.invoke('infer',image),
  end:()=>ipcRenderer.invoke('end'),confirmRegion:crop=>ipcRenderer.invoke('confirm-region',crop),
  activity:moving=>ipcRenderer.invoke('activity',moving),
+ replyConfig:()=>ipcRenderer.invoke('reply-config'),saveReplyConfig:input=>ipcRenderer.invoke('reply-save',input),testReply:()=>ipcRenderer.invoke('reply-test'),
  locate:(image,anchor,aspect)=>ipcRenderer.invoke('locate',image,anchor,aspect),
  status:text=>ipcRenderer.invoke('status',text),
  hint:text=>ipcRenderer.invoke('hint',text),
